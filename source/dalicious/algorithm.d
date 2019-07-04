@@ -84,8 +84,8 @@ int cmpLexicographically(T, fun...)(T a, T b)
     sliceBy may assert at runtime or behave erratically.
 
     Params:
-     pred = Predicate for determining equivalence.
-     r = An array to be sliced.
+     pred  = Predicate for determining equivalence.
+     array = An array to be sliced.
 
     Returns: With a binary predicate, a range of slices is returned in which
     all elements in a given slice are equivalent under the given predicate.

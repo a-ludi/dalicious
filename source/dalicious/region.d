@@ -134,7 +134,7 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
     }
 
     /**
-        This is a right-open interval `[begin, end)` tagged with `tag`.
+        This is a right-open interval `[begin, end$(RPAREN)` tagged with `tag`.
         If `tagAlias` is given then the tag may be access as a property of
         that name.
     */

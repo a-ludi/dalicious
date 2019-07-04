@@ -70,4 +70,4 @@ Contributions are warmly welcome. Just create an [issue][gh-issues] or [pull req
 License
 -------
 
-This project is licensed under MIT License (see license in [LICENSE](./LICENSE).
+This project is licensed under [MIT License](./LICENSE)).
