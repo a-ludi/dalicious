@@ -1,0 +1,10 @@
+name              "dalicious"
+description       "General purpose utility suite with a tendency towards genome assembly."
+authors           "Arne Ludwig <arne.ludwig@posteo.de>"
+copyright         "Copyright © 2019, Arne Ludwig <arne.ludwig@posteo.de>"
+license           "MIT"
+
+dependency        "string-transform-d" version="~>1.0.0"
+dependency        "vibe-d:data"        version="~>0.8.4-alpha.1"
+
+targetType        "library"
