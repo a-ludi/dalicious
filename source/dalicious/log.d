@@ -287,7 +287,7 @@ unittest
     doSomething();
     stderr.rewind();
 
-    enum functionFQN = ctRegex!`dalicious\.util\.log\.__unittest_L[0-9]+_C[0-9]+\.doSomething`;
+    enum functionFQN = ctRegex!`dalicious\.log\.__unittest_L[0-9]+_C[0-9]+\.doSomething`;
     auto observed1 = parseJsonString(stderr.readln);
     auto observed2 = parseJsonString(stderr.readln);
 
