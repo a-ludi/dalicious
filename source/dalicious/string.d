@@ -45,9 +45,18 @@ import std.typecons :
     No,
     tuple,
     Yes;
-import transforms : snakeCaseCT;
+import transforms :
+    snakeCase,
+    snakeCaseCT;
 
-/// Convert a string to `dash-case` at compile time.
+
+/// Convert a `camelCase` string to `dash-case`.
+string dashCase(string camelCase)
+{
+    return camelCase.snakeCase.tr("_", "-");
+}
+
+/// ditto
 enum dashCaseCT(string camelCase) = camelCase.snakeCaseCT.tr("_", "-");
 
 /**
