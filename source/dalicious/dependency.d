@@ -134,7 +134,7 @@ unittest
     Params:
         Modules = List of symbols to be checked.
 */
-version(Posix) void enforceExternalToolsAvailable(Modules...)()
+version(Posix) void enforceExternalDepencenciesAvailable(Modules...)()
 {
     import std.array : array;
     import std.algorithm :
@@ -147,28 +147,35 @@ version(Posix) void enforceExternalToolsAvailable(Modules...)()
 
     enum modulesDeps = externalDependencies!Modules;
 
-    if (modulesDeps.length == 0)
-        return;
+    static if (modulesDeps.length > 0)
+    {
+        enum whichBinary = "/bin/which";
 
-    enum whichBinary = "/bin/which";
+        auto result = execute(
+            [whichBinary, "--skip-alias", "--skip-functions"] ~
+            modulesDeps
+                .map!(extDep => extDep.executable)
+                .array
+        );
 
-    auto result = execute(
-        [whichBinary, "--skip-alias", "--skip-functions"] ~
-        modulesDeps
-            .map!(extDep => extDep.executable)
-            .array
-    );
+        ExternalDependency[] missingExternalTools;
+        missingExternalTools.reserve(result.status);
 
-    ExternalDependency[] missingExternalTools;
-    missingExternalTools.reserve(result.status);
+        foreach (i, line; enumerate(lineSplitter(result.output)))
+            if (line.startsWith(whichBinary))
+                missingExternalTools ~= modulesDeps[i];
 
-    foreach (i, line; enumerate(lineSplitter(result.output)))
-        if (line.startsWith(whichBinary))
-            missingExternalTools ~= modulesDeps[i];
-
-    if (missingExternalTools.length > 0)
-        throw new ExternalDependencyMissing(missingExternalTools);
+        if (missingExternalTools.length > 0)
+            throw new ExternalDependencyMissing(missingExternalTools);
+    }
+    else
+    {
+        pragma(msg, "Info: your program has no external dependencies but checks for their availability.");
+    }
 }
+
+/// ditto
+version(Posix) deprecated alias enforceExternalToolsAvailable = enforceExternalDepencenciesAvailable;
 
 ///
 unittest
@@ -182,7 +189,7 @@ unittest
         void makeCall() { }
     }
 
-    assertThrown!ExternalDependencyMissing(enforceExternalToolsAvailable!Caller());
+    assertThrown!ExternalDependencyMissing(enforceExternalDepencenciesAvailable!Caller());
     // Error message:
     //
     //     missing external tools:
