@@ -29,6 +29,12 @@ struct BoundedArray(E, size_t maxElements_)
     private size_t _length;
 
 
+    this(E[] values)
+    {
+        this._length = values.length;
+        this._elements[0 .. values.length] = values[];
+    }
+
     this(V...)(V values) if (V.length > 0 && V.length <= maxElements && allSatisfy!(isBaseType, V))
     {
         this._length = V.length;
@@ -406,6 +412,47 @@ struct BoundedArray(E, size_t maxElements_)
         assertThrown!JSONException(deserializeJson!BArray(tooLong));
         auto mismatchedElementType = serializeToJson(["1", "2", "3", "4"]);
         assertThrown!JSONException(deserializeJson!BArray(mismatchedElementType));
+    }
+
+
+    version (Have_sbin)
+    {
+        void sbinCustomSerialize(R)(ref R r) const
+        {
+            import sbin : sbinSerialize;
+
+            sbinSerialize(r, _length);
+            foreach (ref element; this[])
+                sbinSerialize(r, element);
+        }
+
+        static void sbinCustomDeserialize(R)(ref R r, ref typeof(this) array)
+        {
+            import sbin : sbinDeserializePart;
+
+            sbinDeserializePart(r, array._length);
+            foreach (i; 0 .. array._length)
+                sbinDeserializePart(r, array._elements[i]);
+        }
+
+        unittest
+        {
+            import sbin;
+            import std.array : appender;
+
+            alias BArray = BoundedArray!(int, 3);
+
+            auto array = BArray([1, 2]);
+
+            auto buffer = appender!(ubyte[]);
+
+            sbinSerialize(buffer, array);
+
+            auto binaryData = buffer.data;
+            auto recoveredArray = sbinDeserialize!BArray(binaryData);
+
+            assert(recoveredArray == array);
+        }
     }
 }
 
