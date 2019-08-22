@@ -1,6 +1,7 @@
 dalicious
 =========
 
+[![DUB](https://img.shields.io/dub/v/dalicious?style=flat-square)](https://code.dlang.org/packages/dalicious)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 
 > General purpose utility suite with a tendency towards genome assembly.
