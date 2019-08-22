@@ -74,7 +74,7 @@ void logJson(T...)(LogLevel level, lazy T args) nothrow
     import dalicious.range : Chunks, chunks;
     import std.datetime.systime : Clock;
     import std.traits : isSomeString;
-    import vibe.data.json : Json;
+    import vibe.data.json : Json, serializeToJson;
 
     enum threadKey = "thread";
     enum timestampKey = "timestamp";
@@ -95,9 +95,7 @@ void logJson(T...)(LogLevel level, lazy T args) nothrow
         json[threadKey] = thisThreadID;
 
         foreach (keyValuePair; args.chunks!2)
-        {
-            json[keyValuePair[0]] = keyValuePair[1];
-        }
+            json[keyValuePair[0]] = serializeToJson(keyValuePair[1]);
 
         return log(level, json.to!string);
     }
