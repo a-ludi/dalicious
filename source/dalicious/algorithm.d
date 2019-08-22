@@ -48,7 +48,7 @@ bool orderLexicographically(T, fun...)(T a, T b)
 */
 int cmpLexicographically(T, fun...)(T a, T b)
 {
-    static foreach (i, getFieldValue; fun)
+    static foreach (i, alias getFieldValue; fun)
     {
         {
             auto aValue = unaryFun!getFieldValue(a);
