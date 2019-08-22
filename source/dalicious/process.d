@@ -26,6 +26,9 @@ import std.traits : isSomeString;
 import vibe.data.json : toJson = serializeToJson;
 
 
+/**
+    Run command and returns an input range of the output lines.
+*/
 auto pipeLines(Range)(Range command, in string workdir = null)
         if (isInputRange!Range && isSomeString!(ElementType!Range))
 {
@@ -34,6 +37,7 @@ auto pipeLines(Range)(Range command, in string workdir = null)
     return new LinesPipe!ProcessInfo(ProcessInfo(sanitizedCommand, workdir));
 }
 
+/// ditto
 auto pipeLines(in string shellCommand, in string workdir = null)
 {
     return new LinesPipe!ShellInfo(ShellInfo(shellCommand, workdir));
@@ -69,7 +73,7 @@ private struct ShellInfo
     const(string) workdir;
 }
 
-static final class LinesPipe(CommandInfo)
+private static final class LinesPipe(CommandInfo)
 {
     static enum lineTerminator = "\n";
 
