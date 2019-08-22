@@ -16,6 +16,7 @@ import std.algorithm :
     countUntil,
     cumulativeFold,
     filter,
+    joiner,
     map,
     max,
     min,
@@ -283,6 +284,18 @@ class EdgeExistsException : Exception
     )
     {
         super("edge cannot be inserted: edge already exists", file, line, nextInChain);
+    }
+}
+
+class NodeExistsException : Exception
+{
+    pure nothrow @nogc @safe this(
+        string file = __FILE__,
+        size_t line = __LINE__,
+        Throwable nextInChain = null,
+    )
+    {
+        super("node cannot be inserted: node already exists", file, line, nextInChain);
     }
 }
 
@@ -1462,6 +1475,282 @@ void mapEdges(alias fun, G)(ref G graph) if (is(G : Graph!Params, Params...))
 
     graph._edges.data.sort();
 }
+
+
+struct UndirectedGraph(Node, Weight = void)
+{
+    static enum isWeighted = !is(Weight == void);
+
+    static if (isWeighted)
+        alias adjacency_t = Weight;
+    else
+        alias adjacency_t = bool;
+
+
+    static struct Edge
+    {
+        protected Node _start;
+        protected Node _end;
+
+        static if (isWeighted)
+            Weight weight;
+
+        /// Construct an edge.
+        this(Node start, Node end) pure nothrow @safe
+        {
+            this._start = start;
+            this._end = end;
+
+            if (end < start)
+                swap(this._start, this._end);
+        }
+
+        static if (isWeighted)
+        {
+            /// ditto
+            this(Node start, Node end, Weight weight) pure nothrow @safe
+            {
+                this(start, end);
+                this.weight = weight;
+            }
+        }
+
+
+        private @property adjacency_t adjacencyValue() pure nothrow @safe @nogc
+        {
+            static if (isWeighted)
+                return weight;
+            else
+                return true;
+        }
+
+
+        /// Get the start of this edge, i.e. the smaller of both incident
+        /// nodes.
+        @property Node start() const pure nothrow @safe
+        {
+            return _start;
+        }
+
+        /// Get the end of this edge, i.e. the larger of both incident nodes.
+        @property Node end() const pure nothrow @safe
+        {
+            return _end;
+        }
+
+        /**
+            Returns the other node of this edge.
+
+            Throws: MissingNodeException if this edge does not coincide with `from`.
+        */
+        Node target(Node from) const
+        {
+            if (from == start)
+                return end;
+            else if (from == end)
+                return start;
+            else
+                throw new MissingNodeException();
+        }
+
+        /// ditto
+        alias source = target;
+
+        /// Two edges are equal iff their incident nodes are the same.
+        bool opEquals(in Edge other) const pure nothrow
+        {
+            return this.start == other.start && this.end == other.end;
+        }
+
+        /// Orders edge lexicographically by `start`, `end`.
+        int opCmp(in Edge other) const pure nothrow
+        {
+            return cmpLexicographically!(
+                typeof(this),
+                "a.start",
+                "a.end",
+            )(this, other);
+        }
+
+        /**
+            Returns the node that is common to this and other.
+
+            Throws: MissingNodeException if there this and other do not share
+                a common node.
+        */
+        Node getCommonNode(in Edge other) const
+        {
+            import std.algorithm : among;
+
+            if (this.end.among(other.start, other.end))
+                return this.end;
+            else if (this.start.among(other.start, other.end))
+                return this.start;
+            else
+                throw new MissingNodeException();
+        }
+    }
+
+    /// Construct an edge for this graph.
+    static Edge edge(T...)(T args)
+    {
+        return Edge(args);
+    }
+
+
+    protected bool[Node] _nodes;
+    protected adjacency_t[Node][Node] _adjacency;
+
+
+    /// Returns a list of the nodes in this graph.
+    @property Node[] nodes() const nothrow pure
+    {
+        return _nodes.keys;
+    }
+
+
+    /// Returns a list of all edges in this graph.
+    @property auto edges() nothrow pure
+    {
+        static if (isWeighted)
+            alias buildEdge = (start, end, weight) => Edge(start, end, weight);
+        else
+            alias buildEdge = (start, end, weight) => Edge(start, end);
+
+        return _adjacency
+            .keys()
+            .map!(start => _adjacency[start]
+                .keys()
+                .map!(end => buildEdge(start, end, _adjacency[start][end]))
+            )
+            .joiner;
+    }
+
+    /// ditto
+    @property auto edges() const nothrow pure
+    {
+        static if (isWeighted)
+            alias buildEdge = (start, end, weight) => cast(const) Edge(start, end, cast() weight);
+        else
+            alias buildEdge = (start, end, weight) => cast(const) Edge(start, end);
+
+        return _adjacency
+            .keys()
+            .map!(start => _adjacency[start]
+                .keys()
+                .map!(end => buildEdge(start, end, _adjacency[start][end]))
+            )
+            .joiner;
+    }
+
+
+    /**
+        Construct a graph from a set of nodes (and edges).
+
+        Throws: NodeExistsException if a node already exists when trying
+                to insert it.
+        Throws: EdgeExistsException if an edge already exists when trying
+                to insert it.
+    */
+    this(Node[] nodes)
+    {
+        foreach (node; nodes)
+            this.addNode(node);
+    }
+
+    /// ditto
+    this(Node[] nodes, Edge[] edges)
+    {
+        this(nodes);
+
+        foreach (edge; edges)
+            this.addEdge(edge);
+    }
+
+
+    /// Inserts node into the node list if not yet present.
+    void requireNode(Node node) nothrow @safe
+    {
+        requireNode(node);
+    }
+
+    /// ditto
+    void requireNode(ref Node node) nothrow @safe
+    {
+        this._nodes[node] = true;
+    }
+
+
+    private static T _throw(T, E)(ref T _)
+    {
+        throw new E();
+    }
+
+
+    /**
+        Inserts node into the node list throwing an exception if already
+        present.
+
+        Throws: NodeExistsException if node already present.
+    */
+    void addNode(Node node) @safe
+    {
+        addNode(node);
+    }
+
+    /// ditto
+    void addNode(ref Node node) @safe
+    {
+        this._nodes.update(
+            node,
+            { return true; },
+            &_throw!(bool, NodeExistsException),
+        );
+    }
+
+
+    /**
+        Inserts edge into the graph thrwoing an exception if already present.
+
+        Throws: EdgeExistsException if edge already present.
+    */
+    void addEdge(Edge edge) @safe
+    {
+        addEdge(edge._start, edge._end, edge.adjacencyValue);
+        addEdge(edge._end, edge._start, edge.adjacencyValue);
+        requireNode(edge._start);
+        requireNode(edge._end);
+    }
+
+
+    private void addEdge(ref Node start, ref Node end, adjacency_t adjacencyValue) @safe
+    {
+        import std.exception : enforce;
+
+        _adjacency.update(start,
+            {
+                adjacency_t[Node] secondLevelAdjacency;
+
+                secondLevelAdjacency[end] = adjacencyValue;
+
+                return secondLevelAdjacency;
+            },
+            (ref adjacency_t[Node] secondLevelAdjacency) {
+                secondLevelAdjacency.update(
+                    end,
+                    delegate () { return adjacencyValue; },
+                    &_throw!(adjacency_t, EdgeExistsException),
+                );
+
+                return secondLevelAdjacency;
+            },
+        );
+
+        requireNode(start);
+        requireNode(end);
+    }
+}
+
 
 class EmptySetException : Exception
 {
