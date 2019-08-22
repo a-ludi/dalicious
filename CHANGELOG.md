@@ -8,16 +8,25 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.0.0] - 2019-08-22
 ### Added
 - Created a CHANGELOG
 - Convert strings to `dash-case` at runtime
 - Added `dalicious.dependency.enforceExternalDepencenciesAvailable` as a
   replacement for `dalicious.dependency.enforceExternalToolsAvailable`
+- New type `BoundedArray`
+- Added helper `charRange`
+- Added execution helpers `executeCommand`, `executeShell`, `executeScript`
+  that log their actions
 
 ### Changed
+- Improved `traceExecution`; it now reports function names including template
+  parameters
+- Made `logJson` and friends more convenient
 - Avoid warning about unreachable statement but print an info message instead
 - Fixed Ddoc warning in `dalicious.dependency.ExternalDependencyMissing`
+- Avoid naming conflict with `std.array.array`
+- Other bug fixes and improvements
 
 ### Deprecated
 - `dalicious.dependency.enforceExternalToolsAvailable` because the name does
@@ -28,10 +37,12 @@ and this project adheres to
 ### Added
 - New module `dependency` for managing external dependencies
 
+
 ## [1.0.1] - 2019-07-04
 ### Changed
 - Typos in README and embedded docs
 - Avoid warning when compiling docs by using `$(RPAREN)`
+
 
 ## [1.0.0] - 2019-07-04
 ### Added
