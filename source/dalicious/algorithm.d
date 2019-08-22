@@ -135,13 +135,13 @@ private struct SliceByImpl(alias pred, Array)
 {
     private alias equivalent = binaryFun!pred;
 
-    private Array array;
+    private Array _array;
     private size_t sliceStart;
     private size_t sliceEnd;
 
     this(Array array)
     {
-        this.array = array;
+        this._array = array;
 
         if (!empty)
         {
@@ -160,8 +160,8 @@ private struct SliceByImpl(alias pred, Array)
             return;
         }
 
-        auto refElement = array[sliceStart];
-        while (sliceEnd < array.length && equivalent(refElement, array[sliceEnd]))
+        auto refElement = _array[sliceStart];
+        while (sliceEnd < _array.length && equivalent(refElement, _array[sliceEnd]))
         {
             ++sliceEnd;
         }
@@ -169,14 +169,14 @@ private struct SliceByImpl(alias pred, Array)
 
     @property bool empty() const pure nothrow
     {
-        return sliceStart >= array.length;
+        return sliceStart >= _array.length;
     }
 
     @property auto front()
     {
         assert(!empty, "Attempting to fetch the front of an empty SliceByImpl");
 
-        return array[sliceStart .. sliceEnd];
+        return _array[sliceStart .. sliceEnd];
     }
 }
 
