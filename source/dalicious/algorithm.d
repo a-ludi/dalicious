@@ -469,3 +469,8 @@ T[] backtracking(alias isFeasible, alias score, T)(
     return optimalSolution;
 }
 
+
+import std.algorithm : map;
+
+/// Cast elements to `const(char)`.
+alias charRange = map!"cast(const char) a";
