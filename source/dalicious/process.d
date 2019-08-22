@@ -25,6 +25,195 @@ import std.range.primitives;
 import std.traits : isSomeString;
 import vibe.data.json : toJson = serializeToJson;
 
+import std.range.primitives :
+    ElementType,
+    isInputRange;
+import std.traits : isSomeString;
+
+
+import dalicious.log : LogLevel;
+
+/**
+    Execute command and return the output. Logs execution and throws an
+    exception on failure.
+
+    Params:
+        command  = A range that is first filtered for non-null values. The
+                   zeroth element of the resulting range is the program and
+                   any remaining elements are the command-line arguments.
+        workdir  = The working directory for the new process. By default the
+                   child process inherits the parent's working directory.
+        logLevel = Log level to log execution on.
+    Returns:
+        Output of command.
+    Throws:
+        std.process.ProcessException on command failure
+*/
+string executeCommand(Range)(
+    Range command,
+    const string workdir = null,
+    LogLevel logLevel = LogLevel.diagnostic,
+)
+        if (isInputRange!Range && isSomeString!(ElementType!Range))
+{
+    import std.process : Config, execute;
+
+    string output = command.executeWrapper!("command",
+            sCmd => execute(sCmd, null, // env
+                Config.none, size_t.max, workdir))(logLevel);
+    return output;
+}
+
+///
+unittest
+{
+    auto greeting = executeCommand(["echo", "hello", "world"]);
+
+    assert(greeting == "hello world\n");
+}
+
+
+/**
+    Execute shellCommand and return the output. Logs execution on
+    LogLevel.diagnostic and throws an exception on failure.
+
+    Params:
+        shellCommand  = A range command that first filtered for non-null
+                        values, then joined by spaces and then passed verbatim
+                        to the shell.
+        workdir       = The working directory for the new process. By default
+                        the child process inherits the parent's
+                        working directory.
+        logLevel      = Log level to log execution on.
+    Returns:
+        Output of command.
+    Throws:
+        std.process.ProcessException on command failure
+*/
+string executeShell(Range)(
+    Range shellCommand,
+    const string workdir = null,
+    LogLevel logLevel = LogLevel.diagnostic,
+)
+        if (isInputRange!Range && isSomeString!(ElementType!Range))
+{
+    import std.algorithm : joiner;
+    import std.conv : to;
+    import std.process : Config, executeShell;
+
+    string output = shellCommand.executeWrapper!("shell",
+            sCmd => executeShell(sCmd.joiner(" ").to!string, null, // env
+                Config.none, size_t.max, workdir))(logLevel);
+
+    return output;
+}
+
+///
+unittest
+{
+    auto greeting = executeShell(["echo", "hello", "world", "|", "rev"]);
+
+    assert(greeting == "dlrow olleh\n");
+}
+
+
+/**
+    Execute script and return the output. Logs execution on
+    LogLevel.diagnostic and throws an exception on failure.
+
+    Params:
+        script   = A range command that first filtered for non-null values and
+                   escaped by std.process.escapeShellCommand. The output of
+                   this script is piped to a shell in
+                   [Unofficial Bash Strict Mode][ubsc], ie `sh -seu o pipefail`.
+        workdir  = The working directory for the new process. By default the
+                   child process inherits the parent's working directory.
+        logLevel = Log level to log execution on.
+    Returns:
+        Output of command.
+    Throws:
+        std.process.ProcessException on command failure
+
+    [ubsc]: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+*/
+string executeScript(Range)(
+    Range script,
+    const string workdir = null,
+    LogLevel logLevel = LogLevel.diagnostic,
+)
+        if (isInputRange!Range && isSomeString!(ElementType!Range))
+{
+    import std.process : Config, executeShell;
+
+    string output = script.executeWrapper!("script",
+            sCmd => executeShell(sCmd.buildScriptLine, null, // env
+                Config.none, size_t.max, workdir))(logLevel);
+
+    return output;
+}
+
+///
+unittest
+{
+    auto greeting = executeScript(["echo", "echo", "rock", "&&", "echo", "roll"]);
+
+    assert(greeting == "rock\nroll\n");
+}
+
+private string executeWrapper(string type, alias execCall, Range)(Range command, LogLevel logLevel)
+        if (isInputRange!Range && isSomeString!(ElementType!Range))
+{
+    import dalicious.log : logJson;
+    import std.array : array;
+    import std.algorithm :
+        filter,
+        map,
+        min;
+    import std.format : format;
+    import std.process : ProcessException;
+    import std.string : lineSplitter;
+    import vibe.data.json : Json;
+
+    auto sanitizedCommand = command.filter!"a != null".array;
+
+    logJson(
+        logLevel,
+        "action", "execute",
+        "type", type,
+        "command", sanitizedCommand.map!Json.array,
+        "state", "pre",
+    );
+    auto result = execCall(sanitizedCommand);
+    logJson(
+        logLevel,
+        "action", "execute",
+        "type", type,
+        "command", sanitizedCommand.map!Json.array,
+        "output", result
+            .output[0 .. min(1024, $)]
+            .lineSplitter
+            .map!Json
+            .array,
+        "exitStatus", result.status,
+        "state", "post",
+    );
+    if (result.status > 0)
+    {
+        throw new ProcessException(
+                format("process %s returned with non-zero exit code %d: %s",
+                sanitizedCommand[0], result.status, result.output));
+    }
+
+    return result.output;
+}
+
+private string buildScriptLine(in string[] command)
+{
+    import std.process : escapeShellCommand;
+
+    return escapeShellCommand(command) ~ " | sh -seu o pipefail";
+}
+
 
 /**
     Run command and returns an input range of the output lines.
