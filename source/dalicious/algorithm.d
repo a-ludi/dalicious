@@ -178,6 +178,11 @@ private struct SliceByImpl(alias pred, Array)
 
         return _array[sliceStart .. sliceEnd];
     }
+
+    @property SliceByImpl!(pred, Array) save() const pure nothrow
+    {
+        return cast(typeof(return)) this;
+    }
 }
 
 /// Return the prefix of `haystack` where `pred` is not satisfied.
