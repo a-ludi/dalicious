@@ -8,6 +8,18 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.1.0] - 2019-09-09
+### Added
+- DUB badge to README
+- `sliceBy` returns a forward range
+- logarithmic indexing functions
+- interval clustering and filtering
+- ring buffer implementation
+
+### Fixed
+- typing bug in `math.mean`
+
+
 ## [2.0.0] - 2019-08-22
 ### Added
 - Created a CHANGELOG
