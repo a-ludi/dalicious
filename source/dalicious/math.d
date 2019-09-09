@@ -2759,3 +2759,196 @@ unittest
 
     assert(inputSequence.longestIncreasingSubsequence.equal(expectedOutput));
 }
+
+
+/**
+    Compute a logarithmic index to `base` of `value` and vice versa.
+    The function is piecewise linear for each interval of `base` indices.
+    For interger values, the functions are mathematically equivalent to:
+
+        logIndex(x, b) = (b - 1) ⌊log_b(x)⌋ + x / b^^⌊log_b(x)⌋
+
+        inverseLogIndex(y, b) = (m + 1) * b^^d
+        where
+            m = (y - 1) mod (b - 1)
+            d = ⌊(y - 1) / (b - 1)⌋
+*/
+size_t logIndex(size_t value, size_t base) pure nothrow
+{
+    size_t nDigits;
+
+    while (value >= base)
+    {
+        value /= base;
+        ++nDigits;
+    }
+
+    return (base - 1) * nDigits + value;
+}
+
+///
+unittest
+{
+    enum base = 10;
+    auto testValues = [
+        0: 0,
+        1: 1,
+        2: 2,
+        9: 9,
+        10: 10,
+        11: 10,
+        19: 10,
+        20: 11,
+        21: 11,
+        29: 11,
+        99: 18,
+        100: 19,
+        101: 19,
+        199: 19,
+        200: 20,
+        1000: 28,
+    ];
+
+    foreach (value, result; testValues)
+        assert(
+            logIndex(value, base) == result,
+            format!"%d != %d"(logIndex(value, base), result),
+        );
+}
+
+///
+unittest
+{
+    enum base = 16;
+    auto testValues = [
+        0x0000: 0,
+        0x0001: 0x1,
+        0x0002: 0x2,
+        0x000f: 0xf,
+        0x0010: 0x10,
+        0x0011: 0x10,
+        0x001f: 0x10,
+        0x0020: 0x11,
+        0x0021: 0x11,
+        0x002f: 0x11,
+        0x00ff: 0x1e,
+        0x0100: 0x1f,
+        0x0101: 0x1f,
+        0x01ff: 0x1f,
+        0x0200: 0x20,
+        0x1000: 0x2e
+    ];
+
+    foreach (value, result; testValues)
+        assert(
+            logIndex(value, base) == result,
+            format!"0x%x != 0x%x"(logIndex(value, base), result),
+        );
+}
+
+/// ditto
+size_t inverseLogIndex(size_t value, size_t base) pure nothrow
+{
+    if (value == 0)
+        return 0;
+
+    auto nDigits = (value - 1) / (base - 1);
+    auto rem = (value - 1) % (base - 1) + 1;
+
+    return rem * base^^nDigits;
+}
+
+///
+unittest
+{
+    enum base = 10;
+    auto testValues = [
+        0: 0,
+        1: 1,
+        2: 2,
+        9: 9,
+        10: 10,
+        10: 10,
+        11: 20,
+        11: 20,
+        18: 90,
+        19: 100,
+        20: 200,
+        28: 1000,
+    ];
+
+    foreach (value, result; testValues)
+        assert(
+            inverseLogIndex(value, base) == result,
+            format!"%d != %d"(inverseLogIndex(value, base), result),
+        );
+}
+
+///
+unittest
+{
+    enum base = 16;
+    auto testValues = [
+        0x00: 0x0,
+        0x01: 0x1,
+        0x02: 0x2,
+        0x0f: 0xf,
+        0x10: 0x10,
+        0x10: 0x10,
+        0x10: 0x10,
+        0x11: 0x20,
+        0x1e: 0xf0,
+        0x1f: 0x100,
+        0x20: 0x200,
+        0x2e: 0x1000
+    ];
+
+    foreach (value, result; testValues)
+        assert(
+            inverseLogIndex(value, base) == result,
+            format!"0x%x != 0x%x"(inverseLogIndex(value, base), result),
+        );
+}
+
+unittest
+{
+    auto testValues = [
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 5,
+        6: 6,
+        7: 7,
+        8: 8,
+        9: 9,
+        10: 10,
+        11: 20,
+        12: 30,
+        13: 40,
+        14: 50,
+        15: 60,
+        16: 70,
+        17: 80,
+        18: 90,
+        19: 100,
+        20: 200,
+        21: 300,
+        22: 400,
+        23: 500,
+        24: 600,
+        25: 700,
+        26: 800,
+        27: 900,
+        28: 1000,
+        29: 2000,
+        30: 3000,
+    ];
+
+    foreach (value, result; testValues)
+        assert(
+            inverseLogIndex(value, 10) == result,
+            format!"%d != %d"(inverseLogIndex(value, 10), result),
+        );
+}
