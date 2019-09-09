@@ -9,7 +9,7 @@
 */
 module dalicious.region;
 
-import std.algorithm : all, cmp, filter, map, max, min, sort, sum;
+import std.algorithm : all, cmp, copy, filter, map, max, min, sort, sum;
 import std.array : appender, array, join;
 import std.exception : assertThrown;
 import std.format : format;
@@ -1154,6 +1154,48 @@ unittest
     assertThrown!(MismatchingTagsException!int)(min(region2));
     assertThrown!(MismatchingTagsException!int)(sup(region2));
 }
+
+void clusterByDistance(R, N)(ref R region, N mergeDistance) if (is(R : Region!(N, Args), Args...))
+{
+    alias TI = R.TaggedInterval;
+
+    if (region.empty)
+        return;
+
+    auto lastInterval = &region._intervals[0];
+    foreach (ref interval; region._intervals[1 .. $])
+    {
+        if (
+            lastInterval.tag == interval.tag &&
+            interval.begin - lastInterval.end <= mergeDistance
+        )
+        {
+            // merge intervals
+            lastInterval.end = interval.end;
+
+            // set interval empty for rapid removal from list of intervals
+            interval.begin = interval.end;
+        }
+        else
+        {
+            lastInterval = &interval;
+        }
+    }
+
+    region.normalize();
+
+    return;
+}
+
+void filterIntervals(alias pred, R)(ref R region) if (is(R : Region!Args, Args...))
+{
+    auto bufferRest = region
+        ._intervals
+        .filter!pred
+        .copy(region._intervals);
+    region._intervals.length -= bufferRest.length;
+}
+
 
 struct Tiling(R, N, T)
 {
