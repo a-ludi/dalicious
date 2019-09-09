@@ -61,7 +61,7 @@ ElementType!Range mean(Range)(Range values) if (isForwardRange!Range)
     auto sum = values.save.sum;
     auto length = values.walkLength.to!(ElementType!Range);
 
-    return sum / length;
+    return cast(typeof(return)) (sum / length);
 }
 
 unittest
