@@ -10,4 +10,5 @@ module dalicious.algorithm;
 
 public import dalicious.algorithm.comparison;
 public import dalicious.algorithm.iteration;
+public import dalicious.algorithm.masker;
 public import dalicious.algorithm.searching;
