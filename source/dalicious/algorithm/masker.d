@@ -21,11 +21,14 @@ import std.typecons;
 
 debug version(unittest)
 {
-    import std.stdio;
+    import std.format;
 
-    void printMask(M)(M mask)
+    string investigateMask(M)(M mask, lazy string err = null)
     {
-        writefln!"-- BEGIN\n%(%s,\n%)\n-- END"(mask);
+        if (err == null)
+            return format!"-- BEGIN\n%(%s,\n%)\n-- END"(mask);
+        else
+            return format!"%s:\n-- BEGIN\n%(%s,\n%)\n-- END"(err, mask);
     }
 }
 
@@ -38,13 +41,19 @@ auto masker(
     acc_t,
     R1,
     R2 = R1,
-)(R1 intervals, R2 boundaries = R2.init)
+)(R1 intervals, R2 boundaries = R2.init) @safe
     if (isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
 {
     alias E = ElementType!R1;
     alias _begin = unaryFun!begin;
     alias _end = unaryFun!end;
 
+    // Trigger compilation for better debugging
+    alias __debugHelper = () =>
+    {
+        cast(void) _begin(E.init);
+        cast(void) _end(E.init);
+    };
     static assert(
         is(typeof(_begin(E.init)) == typeof(_end(E.init))),
         "`begin` and `end` must have same type",
@@ -64,12 +73,16 @@ auto masker(
     static if (hasLength!R2)
         eventsAcc.reserve(2 * boundaries.length);
 
-    chain(changeEvents, boundaryEvents).copy(eventsAcc);
+    () @trusted {
+        chain(changeEvents, boundaryEvents).copy(eventsAcc);
+    }();
 
     eventsAcc.data.sort();
 
     return MaskerImpl!(
         MEvent,
+        _begin,
+        _end,
         category,
         isPointer!E,
         acc,
@@ -84,7 +97,7 @@ auto masker(
     alias category,
     R1,
     R2 = R1,
-)(R1 intervals, R2 boundaries = R2.init)
+)(R1 intervals, R2 boundaries = R2.init) @safe
     if (isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
 {
     return masker!(begin, end, category, null, void)(intervals, boundaries);
@@ -96,7 +109,7 @@ auto masker(
     alias end,
     R1,
     R2 = R1,
-)(R1 intervals, R2 boundaries = R2.init)
+)(R1 intervals, R2 boundaries = R2.init) @safe
     if (isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
 {
     return masker!(begin, end, sgn)(intervals, boundaries);
@@ -121,13 +134,14 @@ unittest
         [Interval(0, 10)],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 1, 0),
-        tuple(1, 6, 1),
-        tuple(6, 8, 0),
-        tuple(8, 9, 1),
-        tuple(9, 10, 0),
-    ]));
+        I(0, 1, 0),
+        I(1, 6, 1),
+        I(6, 8, 0),
+        I(8, 9, 1),
+        I(9, 10, 0),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 /// Custom `category` function:
@@ -161,15 +175,16 @@ unittest
         [Interval(0, 10)],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 1, Coverage.zero),
-        tuple(1, 2, Coverage.normal),
-        tuple(2, 5, Coverage.high),
-        tuple(5, 6, Coverage.normal),
-        tuple(6, 8, Coverage.zero),
-        tuple(8, 9, Coverage.normal),
-        tuple(9, 10, Coverage.zero),
-    ]));
+        I(0, 1, Coverage.zero),
+        I(1, 2, Coverage.normal),
+        I(2, 5, Coverage.high),
+        I(5, 6, Coverage.normal),
+        I(6, 8, Coverage.zero),
+        I(8, 9, Coverage.normal),
+        I(9, 10, Coverage.zero),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 /// The `acc` function is called once for every opening interval:
@@ -194,13 +209,14 @@ unittest
         [Interval(0, 10)],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 1, 0, 0),
-        tuple(1, 6, 1, 4),
-        tuple(6, 8, 0, 0),
-        tuple(8, 9, 1, 1),
-        tuple(9, 10, 0, 0),
-    ]));
+        I(0, 1, 0, 0),
+        I(1, 6, 1, 4),
+        I(6, 8, 0, 0),
+        I(8, 9, 1, 1),
+        I(9, 10, 0, 0),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 /// If the intervals range has pointer type elements then the accumulator may
@@ -231,13 +247,14 @@ unittest
         [new Interval(0, 10, 0)],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 1, 0, 0),
-        tuple(1, 6, 1, -2),
-        tuple(6, 8, 0, 0),
-        tuple(8, 9, 1, 5),
-        tuple(9, 10, 0, 0),
-    ]));
+        I(0, 1, 0, 0),
+        I(1, 6, 1, -2),
+        I(6, 8, 0, 0),
+        I(8, 9, 1, 5),
+        I(9, 10, 0, 0),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 unittest
@@ -318,8 +335,9 @@ unittest
         ReferenceInterval(3, 0, 15),
     ];
 
-    alias beginPos = (refInt) => tuple(refInt.contigId, refInt.begin);
-    alias endPos = (refInt) => tuple(refInt.contigId, refInt.end);
+    alias pos_t = Tuple!(size_t, size_t);
+    alias beginPos = (refInt) => pos_t(refInt.contigId, refInt.begin);
+    alias endPos = (refInt) => pos_t(refInt.contigId, refInt.end);
 
     enum CoverageZone : ubyte
     {
@@ -342,64 +360,64 @@ unittest
         coverageZone,
     )(alignments, contigs);
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(
-            tuple(1, 0),
-            tuple(1, 5),
+        I(
+            pos_t(1, 0),
+            pos_t(1, 5),
             CoverageZone.low,
         ),
-        tuple(
-            tuple(1, 5),
-            tuple(1, 10),
+        I(
+            pos_t(1, 5),
+            pos_t(1, 10),
             CoverageZone.ok,
         ),
-        tuple(
-            tuple(1, 10),
-            tuple(1, 18),
+        I(
+            pos_t(1, 10),
+            pos_t(1, 18),
             CoverageZone.high,
         ),
-        tuple(
-            tuple(1, 18),
-            tuple(1, 20),
+        I(
+            pos_t(1, 18),
+            pos_t(1, 20),
             CoverageZone.ok,
         ),
-        tuple(
-            tuple(1, 20),
-            tuple(1, 30),
+        I(
+            pos_t(1, 20),
+            pos_t(1, 30),
             CoverageZone.high,
         ),
-        // FIXME remove additional output here
-        tuple(
-            tuple(2, 0),
-            tuple(2, 3),
+        I(
+            pos_t(2, 0),
+            pos_t(2, 3),
             CoverageZone.high,
         ),
-        tuple(
-            tuple(2, 3),
-            tuple(2, 5),
+        I(
+            pos_t(2, 3),
+            pos_t(2, 5),
             CoverageZone.ok,
         ),
-        tuple(
-            tuple(2, 5),
-            tuple(2, 15),
+        I(
+            pos_t(2, 5),
+            pos_t(2, 15),
             CoverageZone.high,
         ),
-        tuple(
-            tuple(3, 0),
-            tuple(3, 3),
+        I(
+            pos_t(3, 0),
+            pos_t(3, 3),
             CoverageZone.low,
         ),
-        tuple(
-            tuple(3, 3),
-            tuple(3, 12),
+        I(
+            pos_t(3, 3),
+            pos_t(3, 12),
             CoverageZone.ok,
         ),
-        tuple(
-            tuple(3, 12),
-            tuple(3, 15),
+        I(
+            pos_t(3, 12),
+            pos_t(3, 15),
             CoverageZone.low,
         ),
-    ]));
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 unittest
@@ -427,11 +445,12 @@ unittest
         [Interval(0, 10)],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 5, 1, 5),
-        tuple(5, 6, 0, 0),
-        tuple(6, 10, 1, 4),
-    ]));
+        I(0, 5, 1, 5),
+        I(5, 6, 0, 0),
+        I(6, 10, 1, 4),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 unittest
@@ -446,10 +465,11 @@ unittest
         ],
     );
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 10, 0),
-        tuple(20, 30, 0),
-    ]));
+        I(0, 10, 0),
+        I(20, 30, 0),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 unittest
@@ -461,17 +481,139 @@ unittest
         Interval(20, 30),
     ]);
 
+    alias I = mask.FrontType;
     assert(equal(mask, [
-        tuple(0, 10, 1),
-        tuple(10, 20, 0),
-        tuple(20, 30, 1),
-    ]));
+        I(0, 10, 1),
+        I(10, 20, 0),
+        I(20, 30, 1),
+    ]), investigateMask(mask, "mask does not match"));
 }
 
 
-private auto toChangeEvents(alias _begin, alias _end, Flag!"boundaries" boundaries, R)(R range)
+/// Add more intervals to masker without memory allocation for the original
+/// intervals.
+Masker withAdditionalIntervals(Masker, R1, R2 = R1)(
+    Masker mask,
+    R1 intervals,
+    R2 boundaries = R2.init,
+) if (
+    isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2) &&
+    __traits(isSame, TemplateOf!Masker, MaskerImpl)
+)
 {
-    alias E = ElementType!R;
+    auto changeEvents = intervals.toChangeEvents!(Masker._begin, Masker._end, No.boundaries);
+    auto boundaryEvents = boundaries.toChangeEvents!(Masker._begin, Masker._end, Yes.boundaries);
+    auto eventsAcc = appender!(Masker.MEvent[]);
+
+    static if (hasLength!R1)
+        eventsAcc.reserve(2 * intervals.length);
+    static if (hasLength!R2)
+        eventsAcc.reserve(2 * boundaries.length);
+
+    chain(changeEvents, boundaryEvents).copy(eventsAcc);
+
+    eventsAcc.data.sort();
+
+    mask.addEvents(eventsAcc.data);
+
+    return mask;
+}
+
+/// Masker can be used to compute the intersection of two masks.
+unittest
+{
+    alias Interval = Tuple!(size_t, "begin", size_t, "end");
+
+    auto mask = masker!(
+        "a.begin",
+        "a.end",
+        level => level >= 2 ? 1 : 0,
+    )(
+        [
+            Interval(1, 5),
+            Interval(6, 7),
+            Interval(9, 10),
+        ],
+        [Interval(0, 10)]
+    );
+
+    alias I = mask.FrontType;
+    assert(equal(mask.save, [I(0, 10, 0)]));
+
+    auto intersection1 = mask.withAdditionalIntervals([Interval(4, 7)]);
+    assert(equal(
+        intersection1,
+        [
+            I(0, 4, 0),
+            I(4, 5, 1),
+            I(5, 6, 0),
+            I(6, 7, 1),
+            I(7, 10, 0),
+        ]
+    ), investigateMask(mask, "mask does not match"));
+
+    auto intersection2 = mask.withAdditionalIntervals([Interval(8, 10)]);
+    assert(equal(
+        intersection2,
+        [
+            I(0, 9, 0),
+            I(9, 10, 1),
+        ]
+    ), investigateMask(mask, "mask does not match"));
+}
+
+unittest
+{
+    alias Interval = Tuple!(size_t, "begin", size_t, "end", size_t, "tag");
+
+    auto mask = masker!(
+        "a.begin",
+        "a.end",
+        level => level >= 2 ? 1 : 0,
+        (a, b) => b.tag > 0 ? b.tag : a,
+        size_t,
+    )(
+        [
+            new Interval(1, 5, 0),
+            new Interval(6, 7, 0),
+            new Interval(9, 10, 0),
+        ],
+        [new Interval(0, 10, 0)]
+    );
+
+    alias I = mask.FrontType;
+    assert(equal(mask.save, [I(0, 10, 0, 0)]), investigateMask(mask, "mask does not match"));
+
+    auto intersection = mask.withAdditionalIntervals([
+        new Interval(4, 7, 1),
+        new Interval(8, 10, 2),
+    ]);
+    assert(equal(
+        intersection,
+        [
+            I(0, 4, 0, 0),
+            I(4, 5, 1, 1),
+            I(5, 6, 0, 1),
+            I(6, 7, 1, 1),
+            I(7, 9, 0, 2),
+            I(9, 10, 1, 2),
+        ]
+    ), investigateMask(intersection, "mask does not match"));
+}
+
+
+
+private auto toChangeEvents(alias _begin, alias _end, Flag!"boundaries" boundaries, R)(R range) @trusted
+{
+    return range
+        .map!(makeEvents!(_begin, _end, boundaries, ElementType!R))
+        .joiner
+        .filter!(event => event.type != event_t.ignore);
+}
+
+
+auto makeEvents(alias _begin, alias _end, Flag!"boundaries" boundaries, E)(E element) @safe
+{
     alias pos_t = typeof(_begin(E.init));
 
     static if (isPointer!E)
@@ -487,37 +629,27 @@ private auto toChangeEvents(alias _begin, alias _end, Flag!"boundaries" boundari
 
     static if (boundaries)
     {
-        enum openEventType = event_t.boundaryOpen;
-        enum closeEventType = event_t.boundaryClose;
+        static enum openEventType = event_t.boundaryOpen;
+        static enum closeEventType = event_t.boundaryClose;
     }
     else
     {
-        enum openEventType = event_t.open;
-        enum closeEventType = event_t.close;
+        static enum openEventType = event_t.open;
+        static enum closeEventType = event_t.close;
     }
 
+    auto begin = _begin(element);
+    auto end = _end(element);
 
-    static auto makeEvents(E)(E element)
-    {
-        auto begin = _begin(element);
-        auto end = _end(element);
+    enforce(begin <= end, "interval must not end before it begins");
 
-        enforce(begin <= end, "interval must not end before it begins");
-
-        if (begin < end)
-            return only(
-                MEvent(begin, openEventType, _ref(element)),
-                MEvent(end, closeEventType, _ref(element)),
-            );
-        else
-            return only(MEvent(), MEvent());
-    }
-
-
-    return range
-        .map!makeEvents
-        .joiner
-        .filter!(event => event.type != event_t.ignore);
+    if (begin < end)
+        return only(
+            MEvent(begin, openEventType, _ref(element)),
+            MEvent(end, closeEventType, _ref(element)),
+        );
+    else
+        return only(MEvent(), MEvent());
 }
 
 
@@ -531,6 +663,7 @@ private enum event_t : byte
 }
 static assert(event_t.init == event_t.ignore);
 
+
 private alias MaskerEvent(pos_t, E) = Tuple!(
     pos_t, "pos",
     event_t, "type",
@@ -538,42 +671,59 @@ private alias MaskerEvent(pos_t, E) = Tuple!(
 );
 
 
-private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc, acc_t)
+private struct MaskerImpl(
+    _MEvent,
+    alias __begin,
+    alias __end,
+    alias __category,
+    bool _hasRefElements,
+    alias _acc,
+    _acc_t,
+)
 {
-    alias _category = unaryFun!category;
+    alias MEvent = _MEvent;
+    alias _begin = __begin;
+    alias _end = __end;
+    alias hasRefElements = _hasRefElements;
+    alias acc = _acc;
+    alias acc_t = _acc_t;
+    alias _category = unaryFun!__category;
     alias category_t = typeof(_category(size_t.init));
     alias pos_t = typeof(MEvent.init.pos);
     alias ElementRef = typeof(MEvent.init.elementPtr);
     enum hasAcc = !is(typeof(acc) == typeof(null));
 
-    static if (hasAcc)
+    static struct FrontType
     {
-        alias FrontType = Tuple!(
-            pos_t, "begin",
-            pos_t, "end",
-            category_t, "category",
-            acc_t, "acc",
-        );
-    }
-    else
-    {
-        alias FrontType = Tuple!(
-            pos_t, "begin",
-            pos_t, "end",
-            category_t, "category",
-        );
+        pos_t begin;
+        pos_t end;
+        category_t category;
+
+        static if (hasAcc)
+            acc_t acc;
     }
 
-    MEvent[] events;
+    alias Events = typeof(merge(MEvent[].init, MEvent[].init));
+
+    MEvent[] originalEvents;
+    Events events;
     private FrontType _front;
     private size_t _level;
     private bool _empty;
 
 
-    this(MEvent[] events)
+    this(MEvent[] events, MEvent[] additionalEvents = [])
     {
-        this.events = events;
+        this.originalEvents = events;
+        this.events = merge(events, additionalEvents);
         popFront();
+    }
+
+
+    private void addEvents(MEvent[] additionalEvents)
+    {
+        auto originalEvents = this.originalEvents;
+        this = typeof(this)(originalEvents, additionalEvents);
     }
 
 
@@ -584,15 +734,13 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
         if (events.empty)
             return setEmpty();
 
-        static if (hasAcc)
-        {
-            _front.acc = acc_t.init;
-            accumulateClosedIntervals();
-        }
-
         _front.begin = currentEvent.type == event_t.boundaryOpen
             ? currentEvent.pos
             : _front.end;
+
+        static if (hasAcc)
+            _front.acc = acc_t.init;
+
         _front.category = currentCategory;
 
         auto endEvent = popUntilNextCategory();
@@ -608,6 +756,8 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
     {
         auto _currentCategory = currentCategory;
         MEvent event;
+        static if (hasAcc)
+          auto accLevel = size_t.max;
 
         while (!events.empty)
         {
@@ -627,13 +777,26 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
                     assert(_level > 0, "level must not drop below zero");
                     --_level;
                     static if (hasAcc)
-                        accumulateClosedIntervals();
+                        accumulateClosedInterval(event.elementPtr);
                     break;
                 case event_t.boundaryClose:
                     assert(_level == 0, "level must drop to zero at boundary end");
                     break;
                 case event_t.ignore:
                     assert(0);
+            }
+
+
+            static if (hasAcc)
+            {
+                if (accLevel < size_t.max && _category(_level) == _currentCategory)
+                    accLevel = size_t.max;
+                else if (
+                    accLevel == size_t.max &&
+                    event.type == event_t.open &&
+                    _category(_level) != _currentCategory
+                )
+                    accLevel = _level - 1;
             }
 
             events.popFront();
@@ -647,6 +810,9 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
             )
                 break;
         }
+
+        static if (hasAcc)
+            accumulateStillOpenIntervals(min(accLevel, _level));
 
         assert(
             !events.empty || _level == 0,
@@ -680,11 +846,41 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
         }
 
 
+        private void accumulateStillOpenIntervals(size_t level)
+        {
+            foreach_reverse (accElementPtr; _accElements.data[0 .. level])
+                accumulate(accElementPtr);
+        }
+
+
+        private void accumulateClosedInterval(ElementRef elementPtr)
+        {
+            auto elementIdx = _accElements.data.countUntil(elementPtr);
+            assert(elementIdx >= 0);
+
+            accumulate(elementPtr);
+
+            _accElements.data.swapAt(elementIdx, _accElements.data.length - 1);
+            _accElements.shrinkTo(_accElements.data.length - 1);
+
+            assert(
+                _accElements.data.length == _level,
+                "number of accumulated elements must match current level",
+            );
+        }
+
+
         private void accumulateClosedIntervals()
         {
             foreach_reverse (accElementPtr; _accElements.data[_level .. $])
                 accumulate(accElementPtr);
 
+            _accElements.shrinkTo(_level);
+        }
+
+
+        private void discardClosedIntervals()
+        {
             _accElements.shrinkTo(_level);
         }
 
@@ -727,5 +923,13 @@ private struct MaskerImpl(MEvent, alias category, bool hasRefElements, alias acc
     @property typeof(this) save()
     {
         return this;
+    }
+
+
+    this(this)
+    {
+        this.events = this.events.save;
+        static if (hasAcc)
+            this._accElements = appender(this._accElements.data.dup);
     }
 }
