@@ -8,6 +8,17 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.2.0] - 2019-09-24
+### Added
+- Created `masker` algorithm
+
+### Changed
+- Restructured package `dalicious.algorithm` into several sub-packages
+
+### Fixed
+- Made `traceExecution` `@safe`
+
+
 ## [2.1.0] - 2019-09-09
 ### Added
 - DUB badge to README
