@@ -219,29 +219,29 @@ struct ExecutionTracer(LogLevel logLevel = LogLevel.diagnostic)
     string functionName;
     StopWatch timer;
 
-    this(int dummy, string fnName = __FUNCTION__)
+    this(int dummy, string fnName = __FUNCTION__) nothrow @safe
     {
         this.functionName = fnName;
 
-        logJson(
+        () @trusted { logJson(
             logLevel,
             `state`, `enter`,
             `function`, this.functionName,
-        );
+        ); }();
 
         this.timer = StopWatch(Yes.autoStart);
     }
 
-    ~this()
+    ~this() nothrow @safe
     {
         timer.stop();
 
-        logJson(
+        () @trusted { logJson(
             logLevel,
             `state`, `exit`,
             `function`, functionName,
-            `timeElapsed`, timer.peek().total!`hnsecs`,
-        );
+            `timeElapsedSecs`, timer.peek().total!`hnsecs` * 100e-9,
+        ); }();
     }
 }
 
