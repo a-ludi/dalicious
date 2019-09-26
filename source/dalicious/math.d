@@ -2773,7 +2773,7 @@ unittest
             m = (y - 1) mod (b - 1)
             d = ⌊(y - 1) / (b - 1)⌋
 */
-size_t logIndex(size_t value, size_t base) pure nothrow
+size_t logIndex(size_t value, size_t base) pure nothrow @safe
 {
     size_t nDigits;
 
@@ -2847,7 +2847,7 @@ unittest
 }
 
 /// ditto
-size_t inverseLogIndex(size_t value, size_t base) pure nothrow
+size_t inverseLogIndex(size_t value, size_t base) pure nothrow @safe
 {
     if (value == 0)
         return 0;
