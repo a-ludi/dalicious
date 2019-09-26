@@ -964,3 +964,95 @@ private struct MaskerImpl(
             this._accElements = appender(this._accElements.data.dup);
     }
 }
+
+
+/// Returns a range of all points where the coverage level changes.
+auto coverageChanges(Masker)(Masker mask) if (__traits(isSame, TemplateOf!Masker, MaskerImpl))
+{
+    return CoverageChangesImpl!(Masker.MEvent)(mask.originalEvents);
+}
+
+
+private struct CoverageChangesImpl(MEvent)
+{
+    alias pos_t = typeof(MEvent.init.pos);
+
+    static struct FrontType
+    {
+        pos_t pos;
+        category_t level;
+    }
+
+    MEvent[] events;
+    private FrontType _front;
+
+
+    void popFront()
+    {
+        assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+        if (events.empty)
+            return setEmpty();
+
+        while (!events.empty)
+        {
+            auto event = events.front;
+
+            final switch (event.type)
+            {
+                case event_t.boundaryOpen:
+                    assert(_front.level == 0, "level must be zero at boundary begin");
+                    break;
+                case event_t.open:
+                    ++_front.level;
+                    break;
+                case event_t.close:
+                    assert(_front.level > 0, "level must not drop below zero");
+                    --_front.level;
+                    break;
+                case event_t.boundaryClose:
+                    assert(_front.level == 0, "level must drop to zero at boundary end");
+                    break;
+                case event_t.ignore:
+                    assert(0);
+            }
+
+            events.popFront();
+
+            if (
+                event.pos != events.front.pos ||
+                event.type == event_t.boundaryClose ||
+                events.empty
+            )
+                break;
+        }
+
+        assert(!events.empty || _front.level == 0, "level must drop to zero eventually");
+    }
+
+
+    private void setEmpty() pure nothrow @safe
+    {
+        _front.level = size_t.max;
+    }
+
+
+    @property bool empty() const pure nothrow @safe
+    {
+        return _front.level == size_t.max;
+    }
+
+
+    @property auto front() pure nothrow @safe
+    {
+        assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+        return _front;
+    }
+
+
+    @property typeof(this) save()
+    {
+        return this;
+    }
+}
