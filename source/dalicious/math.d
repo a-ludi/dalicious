@@ -8,57 +8,20 @@
 */
 module dalicious.math;
 
-import dalicious.algorithm : cmpLexicographically, sliceBy;
-import std.algorithm :
-    all,
-    among,
-    copy,
-    countUntil,
-    cumulativeFold,
-    filter,
-    joiner,
-    map,
-    max,
-    min,
-    maxElement,
-    sort,
-    stdMean = mean,
-    sum,
-    swap,
-    uniq;
-import std.array : appender, Appender, array;
-import std.conv : to;
-import std.exception : assertThrown;
-import std.format : format;
-import std.functional : binaryFun, unaryFun;
-import std.math :
-    approxEqual,
-    stdFloor = floor;
-import std.range :
-    assumeSorted,
-    chain,
-    ElementType,
-    enumerate,
-    isForwardRange,
-    isInputRange,
-    isRandomAccessRange,
-    retro,
-    save,
-    slide,
-    StoppingPolicy,
-    walkLength,
-    zip;
+import dalicious.algorithm;
+import std.algorithm;
+import std.algorithm : stdMean = mean;
+import std.array;
+import std.conv;
+import std.exception;
+import std.format;
+import std.functional;
+import std.math;
+import std.math : stdFloor = floor;
+import std.range;
 import std.string;
-import std.traits :
-    isCallable,
-    isFloatingPoint,
-    isIntegral,
-    isNumeric,
-    isUnsigned;
-import std.typecons :
-    Flag,
-    No,
-    Yes;
+import std.traits;
+import std.typecons;
 
 debug import std.stdio : writeln;
 
@@ -2995,7 +2958,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
         bin_size_t _binSize;
         enum size_t underflowIdx = 0;
         size_t overflowIdx;
-        size_t[] counts;
+        size_t[] _counts;
         size_t _totalCount;
         T _minValue;
         T _maxValue;
@@ -3020,7 +2983,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
         this._histMax = histMax;
         this._binSize = binSize;
         this.overflowIdx = rawBinIdx(histMax);
-        this.counts = new size_t[overflowIdx + 1];
+        this._counts = new size_t[overflowIdx + 1];
         this._minValue = valueSup;
         this._maxValue = valueInf;
         this._sum = 0;
@@ -3050,16 +3013,16 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     @property inout(size_t[]) countsWithoutOutliers() inout pure nothrow @safe
     {
         size_t begin = cast(size_t) hasUnderflowBin;
-        size_t end = counts.length - 1 - cast(size_t) hasOverflowBin;
+        size_t end = _counts.length - 1 - cast(size_t) hasOverflowBin;
 
-        return counts[begin .. end];
+        return _counts[begin .. end];
     }
 
 
     @property size_t numUnderflows() const pure nothrow @safe
     {
         if (hasUnderflowBin)
-            return counts[underflowIdx];
+            return _counts[underflowIdx];
         else
             return 0;
     }
@@ -3068,7 +3031,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     @property size_t numOverflows() const pure nothrow @safe
     {
         if (hasOverflowBin)
-            return counts[overflowIdx];
+            return _counts[overflowIdx];
         else
             return 0;
     }
@@ -3077,7 +3040,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     /// Insert value into this histogram.
     void insert(T value)
     {
-        ++counts[binIdx(value)];
+        ++_counts[binIdx(value)];
         ++_totalCount;
         _minValue = min(_minValue, value);
         _maxValue = max(_maxValue, value);
@@ -3162,7 +3125,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
             : percent * totalCount;
 
         size_t partialSum;
-        foreach (i, ref count; excludeOutliers ? countsWithoutOutliers : counts)
+        foreach (i, ref count; excludeOutliers ? countsWithoutOutliers : _counts)
         {
             if (partialSum + count >= threshold)
             {
@@ -3207,7 +3170,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     {
         int result;
 
-        foreach (i, count; counts)
+        foreach (i, count; _counts)
         {
             result = yield(
                 i,
@@ -3243,7 +3206,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     {
         int result;
 
-        foreach_reverse (i, count; counts)
+        foreach_reverse (i, count; _counts)
         {
             result = yield(
                 i,
@@ -3256,6 +3219,22 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
         }
 
         return result;
+    }
+
+    /// ditto
+    auto densities() const pure nothrow @safe
+    {
+        return _counts
+            .enumerate
+            .map!(enumValue => tuple!(
+                "index",
+                "coord",
+                "density",
+            )(
+                enumValue.index,
+                binCoord(enumValue.index),
+                cast(double) enumValue.value / (totalCount * binSize(enumValue.index)),
+            ));
     }
 
 
@@ -3280,7 +3259,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     {
         int result;
 
-        foreach (i, count; counts)
+        foreach (i, count; _counts)
         {
             result = yield(
                 i,
@@ -3316,7 +3295,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
     {
         int result;
 
-        foreach_reverse (i, count; counts)
+        foreach_reverse (i, count; _counts)
         {
             result = yield(
                 i,
@@ -3343,6 +3322,22 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
             return rawBinIdx(value);
     }
 
+    /// ditto
+    auto counts() const pure nothrow @safe
+    {
+        return _counts
+            .enumerate
+            .map!(enumValue => tuple!(
+                "index",
+                "coord",
+                "count",
+            )(
+                enumValue.index,
+                binCoord(enumValue.index),
+                enumValue.value,
+            ));
+    }
+
 
     private size_t rawBinIdx(T value) const pure @safe
     {
@@ -3357,7 +3352,10 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
         }
         else
         {
-            idx = stdFloor(normalizedValue(value) / binSize).to!size_t;
+            static if (isFloatingPoint!T)
+                idx = stdFloor(normalizedValue(value) / binSize).to!size_t;
+            else
+                idx = (normalizedValue(value) / binSize).to!size_t;
         }
 
         return idx + cast(size_t) hasUnderflowBin;
@@ -3452,12 +3450,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
             minValue,
             maxValue,
             sum,
-            counts
-                .enumerate
-                .map!(enumValue => format!histLineFmt(
-                    binCoord(enumValue.index),
-                    cast(double) enumValue.value / (totalCount * binSize(enumValue.index)),
-                )),
+            densities.map!(v => format!histLineFmt(v.coord, v.density)),
         );
     }
 }
@@ -3656,7 +3649,6 @@ unittest
     assert(approxEqual(h.mean, 9.3));
     assert(approxEqual(h.percentile(0.5), 4.5));
 
-    enum inf = double.infinity;
     auto expectedHist = [
         [ 0, 0.120],
         [ 1, 0.140],
@@ -3680,4 +3672,27 @@ unittest
         assert(approxEqual(expectedHist[idx][0], coord));
         assert(approxEqual(expectedHist[idx][1], density));
     }
+}
+
+unittest
+{
+    auto h = histogram(0U, 50U, 1U, [
+        3U, 4U, 23U, 2U, 0U, 2U, 9U, 0U, 17U, 2U, 0U, 5U, 5U, 35U, 0U, 16U,
+        17U, 3U, 7U, 14U, 3U, 9U, 1U, 17U, 13U, 10U, 38U, 2U, 1U, 29U, 1U,
+        5U, 49U, 40U, 2U, 1U, 13U, 5U, 1U, 1U, 2U, 4U, 1U, 0U, 0U, 7U, 7U,
+        34U, 3U, 2U,
+    ]);
+
+    assert(h.totalCount == 50);
+    assert(h.minValue == 0);
+    assert(h.maxValue == 49);
+    assert(h.sum == 465);
+    assert(approxEqual(h.mean, 9.3));
+    assert(approxEqual(h.percentile(0.5), 4.5));
+
+    assert(equal(h.counts.map!"a.count", [
+        6, 7, 7, 4, 2, 4, 0, 3, 0, 2, 1, 0, 0, 2, 1, 0, 1, 3, 0, 0, 0, 0, 0,
+        1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0,
+    ]));
 }
