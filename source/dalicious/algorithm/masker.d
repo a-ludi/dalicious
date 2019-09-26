@@ -602,6 +602,37 @@ unittest
 }
 
 
+/// Exchange `category` function reusing the precalculated data.
+Masker withCategory(alias category, Masker)(Masker mask)
+    if (__traits(isSame, TemplateOf!Masker, MaskerImpl))
+{
+    return MaskerImpl!(
+        Masker.MEvent,
+        Masker._begin,
+        Masker._end,
+        category,
+        Masker.hasRefElements,
+        Masker.acc,
+        Masker.acc_t,
+    )(mask.originalEvents);
+}
+
+
+/// Exchange `acc` function reusing the precalculated data.
+Masker withAcc(alias acc, acc_t, Masker)(Masker mask)
+    if (__traits(isSame, TemplateOf!Masker, MaskerImpl))
+{
+    return MaskerImpl!(
+        Masker.MEvent,
+        Masker._begin,
+        Masker._end,
+        Masker._category,
+        Masker.hasRefElements,
+        acc,
+        acc_t,
+    )(mask.originalEvents);
+}
+
 
 private auto toChangeEvents(alias _begin, alias _end, Flag!"boundaries" boundaries, R)(R range) @trusted
 {
