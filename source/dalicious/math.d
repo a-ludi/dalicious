@@ -22,6 +22,7 @@ import std.algorithm :
     min,
     maxElement,
     sort,
+    stdMean = mean,
     sum,
     swap,
     uniq;
@@ -30,6 +31,9 @@ import std.conv : to;
 import std.exception : assertThrown;
 import std.format : format;
 import std.functional : binaryFun, unaryFun;
+import std.math :
+    approxEqual,
+    stdFloor = floor;
 import std.range :
     assumeSorted,
     chain,
@@ -44,10 +48,13 @@ import std.range :
     StoppingPolicy,
     walkLength,
     zip;
+import std.string;
 import std.traits :
     isCallable,
+    isFloatingPoint,
     isIntegral,
-    isNumeric;
+    isNumeric,
+    isUnsigned;
 import std.typecons :
     Flag,
     No,
@@ -2951,4 +2958,726 @@ unittest
             inverseLogIndex(value, 10) == result,
             format!"%d != %d"(inverseLogIndex(value, 10), result),
         );
+}
+
+
+struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
+{
+    static assert(isNumeric!T, "currently only built-in numeric types are supported");
+
+    static if (logIndex)
+    {
+        alias bin_size_t = size_t;
+        alias indexBase = _binSize;
+    }
+    else
+    {
+        alias bin_size_t = T;
+    }
+
+
+    static if (isFloatingPoint!T)
+    {
+        enum valueInf = -T.infinity;
+        enum valueSup = T.infinity;
+    }
+    else
+    {
+        enum valueInf = T.min;
+        enum valueSup = T.max;
+    }
+
+
+    private
+    {
+        T _histMin;
+        T _histMax;
+        bin_size_t _binSize;
+        enum size_t underflowIdx = 0;
+        size_t overflowIdx;
+        size_t[] counts;
+        size_t _totalCount;
+        T _minValue;
+        T _maxValue;
+        T _sum;
+    }
+
+
+    this(T histMin, T histMax, bin_size_t binSize)
+    {
+        static if (isFloatingPoint!T)
+            assert(
+                -T.infinity < histMin && histMax < T.infinity,
+                "histMin and histMax must be finite",
+            );
+        assert(histMin < histMax, "histMin should be less than histMax");
+        assert(binSize > 0, "binSize/indexBase must be positive");
+
+        if (histMin > histMax)
+            swap(histMin, histMax);
+
+        this._histMin = histMin;
+        this._histMax = histMax;
+        this._binSize = binSize;
+        this.overflowIdx = rawBinIdx(histMax);
+        this.counts = new size_t[overflowIdx + 1];
+        this._minValue = valueSup;
+        this._maxValue = valueInf;
+        this._sum = 0;
+
+        debug assert(binCoord(overflowIdx) <= histMax && histMax <= valueSup);
+    }
+
+
+    @property bool hasUnderflowBin() const pure nothrow @safe
+    {
+        static if (isFloatingPoint!T)
+            return true;
+        else
+            return valueInf < histMin;
+    }
+
+
+    @property bool hasOverflowBin() const pure nothrow @safe
+    {
+        static if (isFloatingPoint!T)
+            return true;
+        else
+            return histMax < valueSup;
+    }
+
+
+    @property inout(size_t[]) countsWithoutOutliers() inout pure nothrow @safe
+    {
+        size_t begin = cast(size_t) hasUnderflowBin;
+        size_t end = counts.length - 1 - cast(size_t) hasOverflowBin;
+
+        return counts[begin .. end];
+    }
+
+
+    @property size_t numUnderflows() const pure nothrow @safe
+    {
+        if (hasUnderflowBin)
+            return counts[underflowIdx];
+        else
+            return 0;
+    }
+
+
+    @property size_t numOverflows() const pure nothrow @safe
+    {
+        if (hasOverflowBin)
+            return counts[overflowIdx];
+        else
+            return 0;
+    }
+
+
+    /// Insert value into this histogram.
+    void insert(T value)
+    {
+        ++counts[binIdx(value)];
+        ++_totalCount;
+        _minValue = min(_minValue, value);
+        _maxValue = max(_maxValue, value);
+        _sum += value;
+    }
+
+
+    /// Insert a range of values into this histogram. This is equivalent to
+    ///
+    ///     foreach (value; values)
+    ///         insert(value);
+    void insert(R)(R values) if (isInputRange!R && is(ElementType!R == T))
+    {
+        foreach (value; values)
+            insert(value);
+    }
+
+
+    /// Values smaller than this value are stored in the lower overflow bin.
+    @property const(T) histMin() const pure nothrow @safe { return _histMin; }
+
+    /// Values larger than this value are stored in the lower overflow bin.
+    @property const(T) histMax() const pure nothrow @safe { return _histMax; }
+
+    /// Total number of values stored in this histogram.
+    @property const(size_t) totalCount() const pure nothrow @safe { return _totalCount; }
+
+    /// Smallest value stored in this histogram. This is not subject to
+    /// `histMin` and `histMax`.
+    @property const(T) minValue() const pure nothrow @safe
+    in (_totalCount > 0, "undefined for empty histogram")
+    {
+        return _minValue;
+    }
+
+    /// Largest value stored in this histogram. This is not subject to
+    /// `histMin` and `histMax`.
+    @property const(T) maxValue() const pure nothrow @safe
+    in (_totalCount > 0, "undefined for empty histogram")
+    {
+        return _maxValue;
+    }
+
+    /// Sum of all values stored in this histogram. This is not subject to
+    /// `histMin` and `histMax`.
+    @property const(T) sum() const pure nothrow @safe
+    in (_totalCount > 0, "undefined for empty histogram")
+    {
+        return _sum;
+    }
+
+
+    /// Returns a value such that roughly `percent` values in the histogram
+    /// are smaller than value. The value is linearly interpolated between
+    /// bin coordinates. The second form stores the bin index such that no
+    /// more the `percent` of the values in the histrogram are in the bins
+    /// up to `index` (inclusive).
+    double percentile(
+        double percent,
+        Flag!"excludeOutliers" excludeOutliers = No.excludeOutliers,
+    ) const pure
+    {
+        size_t index;
+
+        return percentile(percent, index, excludeOutliers);
+    }
+
+    /// ditto
+    double percentile(
+        double percent,
+        out size_t index,
+        Flag!"excludeOutliers" excludeOutliers = No.excludeOutliers,
+    ) const pure
+    {
+        assert(0.0 < percent && percent < 1.0, "percent must be between 0 and 1");
+
+        if (totalCount == 0)
+            return double.nan;
+
+        auto threshold = excludeOutliers
+            ? percent * (totalCount - (numUnderflows + numOverflows))
+            : percent * totalCount;
+
+        size_t partialSum;
+        foreach (i, ref count; excludeOutliers ? countsWithoutOutliers : counts)
+        {
+            if (partialSum + count >= threshold)
+            {
+                index = i;
+
+                return binCoord(i) + binSize(i) * (threshold - partialSum) / count;
+            }
+
+            partialSum += count;
+        }
+
+        assert(0, "unreachable");
+    }
+
+
+    /// Returns the mean of the inserted values.
+    @property double mean() const pure nothrow
+    {
+        return cast(double) sum / totalCount;
+    }
+
+
+    /// Iterates over the histogram bins enumerating the probability
+    /// densities `density`.
+    int opApply(scope int delegate(T coord, double density) yield)
+    {
+        int result;
+
+        foreach (size_t idx, T coord, double density; this)
+        {
+            result = yield(coord, density);
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApply(scope int delegate(size_t index, T coord, double density) yield)
+    {
+        int result;
+
+        foreach (i, count; counts)
+        {
+            result = yield(
+                i,
+                binCoord(i),
+                cast(double) count / (totalCount * binSize(i)),
+            );
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApplyReverse(scope int delegate(T coord, double density) yield)
+    {
+        int result;
+
+        foreach_reverse (size_t idx, T coord, double density; this)
+        {
+            result = yield(coord, density);
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApplyReverse(scope int delegate(size_t index, T coord, double density) yield)
+    {
+        int result;
+
+        foreach_reverse (i, count; counts)
+        {
+            result = yield(
+                i,
+                binCoord(i),
+                cast(double) count / (totalCount * binSize(i)),
+            );
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+
+    /// Iterates over the histogram bins enumerating the counts.
+    int opApply(scope int delegate(T coord, size_t count) yield)
+    {
+        int result;
+
+        foreach (size_t idx, T coord, size_t count; this)
+        {
+            result = yield(coord, count);
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApply(scope int delegate(size_t index, T coord, size_t count) yield)
+    {
+        int result;
+
+        foreach (i, count; counts)
+        {
+            result = yield(
+                i,
+                binCoord(i),
+                count,
+            );
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApplyReverse(scope int delegate(T coord, size_t count) yield)
+    {
+        int result;
+
+        foreach_reverse (size_t idx, T coord, size_t count; this)
+        {
+            result = yield(coord, count);
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApplyReverse(scope int delegate(size_t index, T coord, size_t count) yield)
+    {
+        int result;
+
+        foreach_reverse (i, count; counts)
+        {
+            result = yield(
+                i,
+                binCoord(i),
+                count,
+            );
+
+            if (result)
+                break;
+        }
+
+        return result;
+    }
+
+
+    /// Calculate the bin index corresponding to `value`.
+    size_t binIdx(T value) const pure @safe
+    {
+        if (value < histMin)
+            return underflowIdx;
+        else if (histMax <= value)
+            return overflowIdx;
+        else
+            return rawBinIdx(value);
+    }
+
+
+    private size_t rawBinIdx(T value) const pure @safe
+    {
+        size_t idx;
+
+        static if (logIndex)
+        {
+            static if (isFloatingPoint!T)
+                idx = dalicious.math.logIndex(stdFloor(normalizedValue(value)).to!size_t, indexBase);
+            else
+                idx = dalicious.math.logIndex(normalizedValue(value).to!size_t, indexBase);
+        }
+        else
+        {
+            idx = stdFloor(normalizedValue(value) / binSize).to!size_t;
+        }
+
+        return idx + cast(size_t) hasUnderflowBin;
+    }
+
+
+    /// Calculate the bin size at of bin `idx`.
+    T binSize(size_t idx) const pure @safe
+    {
+        if (hasUnderflowBin && idx == underflowIdx)
+            return minValue - valueInf;
+        else if (hasOverflowBin && idx == overflowIdx)
+            return valueSup - histMax;
+
+        static if (logIndex)
+        {
+            idx -= cast(size_t) hasUnderflowBin;
+
+            return to!T(
+                dalicious.math.inverseLogIndex(idx + 1, indexBase)
+                -
+                dalicious.math.inverseLogIndex(idx, indexBase)
+            );
+        }
+        else
+        {
+            return binSize;
+        }
+    }
+
+    /// ditto
+    static if (!logIndex)
+        T binSize() const pure @safe
+        {
+            return _binSize;
+        }
+
+
+    /// Calculate the value corresponding to the bin index.
+    T binCoord(size_t idx) const pure @safe
+    {
+        if (hasUnderflowBin && idx == underflowIdx)
+            return valueInf;
+        else if (hasOverflowBin && idx == overflowIdx)
+            return histMax;
+
+        idx -= cast(size_t) hasUnderflowBin;
+
+        static if (logIndex)
+            return primalValue(to!T(dalicious.math.inverseLogIndex(idx, indexBase)));
+        else
+            return primalValue(to!T(idx * binSize));
+    }
+
+
+    private T normalizedValue(T value) const pure nothrow @safe
+    out (nValue; nValue >= 0, "normalizedValue must be non-negative")
+    {
+        static if (isUnsigned!T)
+            assert(histMin <= value, "subtraction overflow");
+
+        return value - histMin;
+    }
+
+
+    private T primalValue(T nValue) const pure nothrow @safe
+    in (nValue >= 0, "nValue must be non-negative")
+    {
+        return nValue + histMin;
+    }
+
+
+    /// Returns a space-separated table of the histogram bins and header lines
+    /// with `totalCount`, `minValue`, `maxValue` and `sum`. The header lines
+    /// begin with a has sign (`#`) so they may be treated as comments
+    /// by other programs.
+    string toString() const
+    {
+        enum histFmt = format!(`
+            # totalCount=%%d
+            # minValue=%%%1$c
+            # maxValue=%%%1$c
+            # sum=%%%1$c
+            %%-(%%s\%%)
+        `.outdent.strip.tr(`\`, "\n"))(isFloatingPoint!T ? 'g' : 'd');
+        enum histLineFmt = isFloatingPoint!T
+            ? "%g %g"
+            : "%d %g";
+
+        return format!histFmt(
+            totalCount,
+            minValue,
+            maxValue,
+            sum,
+            counts
+                .enumerate
+                .map!(enumValue => format!histLineFmt(
+                    binCoord(enumValue.index),
+                    cast(double) enumValue.value / (totalCount * binSize(enumValue.index)),
+                )),
+        );
+    }
+}
+
+unittest
+{
+    auto h = logHistogram(0U, 10000U, 10U);
+
+    with (h)
+    {
+        assert(binIdx(0) == 0);
+        assert(binIdx(1) == 1);
+        assert(binIdx(2) == 2);
+        assert(binIdx(9) == 9);
+        assert(binIdx(10) == 10);
+        assert(binIdx(11) == 10);
+        assert(binIdx(19) == 10);
+        assert(binIdx(20) == 11);
+        assert(binIdx(21) == 11);
+        assert(binIdx(29) == 11);
+        assert(binIdx(99) == 18);
+        assert(binIdx(100) == 19);
+        assert(binIdx(101) == 19);
+        assert(binIdx(199) == 19);
+        assert(binIdx(200) == 20);
+        assert(binIdx(1000) == 28);
+
+        assert(binSize(0) == 1);
+        assert(binSize(1) == 1);
+        assert(binSize(2) == 1);
+        assert(binSize(3) == 1);
+        assert(binSize(4) == 1);
+        assert(binSize(5) == 1);
+        assert(binSize(6) == 1);
+        assert(binSize(7) == 1);
+        assert(binSize(8) == 1);
+        assert(binSize(9) == 1);
+        assert(binSize(10) == 10);
+        assert(binSize(11) == 10);
+        assert(binSize(12) == 10);
+        assert(binSize(13) == 10);
+        assert(binSize(14) == 10);
+        assert(binSize(15) == 10);
+        assert(binSize(16) == 10);
+        assert(binSize(17) == 10);
+        assert(binSize(18) == 10);
+        assert(binSize(19) == 100);
+        assert(binSize(20) == 100);
+        assert(binSize(21) == 100);
+        assert(binSize(22) == 100);
+        assert(binSize(23) == 100);
+        assert(binSize(24) == 100);
+        assert(binSize(25) == 100);
+        assert(binSize(26) == 100);
+        assert(binSize(27) == 100);
+        assert(binSize(28) == 1000);
+        assert(binSize(29) == 1000);
+        assert(binSize(30) == 1000);
+
+        assert(binCoord(0) == 0);
+        assert(binCoord(1) == 1);
+        assert(binCoord(2) == 2);
+        assert(binCoord(3) == 3);
+        assert(binCoord(4) == 4);
+        assert(binCoord(5) == 5);
+        assert(binCoord(6) == 6);
+        assert(binCoord(7) == 7);
+        assert(binCoord(8) == 8);
+        assert(binCoord(9) == 9);
+        assert(binCoord(10) == 10);
+        assert(binCoord(11) == 20);
+        assert(binCoord(12) == 30);
+        assert(binCoord(13) == 40);
+        assert(binCoord(14) == 50);
+        assert(binCoord(15) == 60);
+        assert(binCoord(16) == 70);
+        assert(binCoord(17) == 80);
+        assert(binCoord(18) == 90);
+        assert(binCoord(19) == 100);
+        assert(binCoord(20) == 200);
+        assert(binCoord(21) == 300);
+        assert(binCoord(22) == 400);
+        assert(binCoord(23) == 500);
+        assert(binCoord(24) == 600);
+        assert(binCoord(25) == 700);
+        assert(binCoord(26) == 800);
+        assert(binCoord(27) == 900);
+        assert(binCoord(28) == 1000);
+        assert(binCoord(29) == 2000);
+        assert(binCoord(30) == 3000);
+    }
+}
+
+
+/**
+    Creates a histogram of values. Additional values can be inserted into the
+    histogram using the `insert` method. The second form `logHistogram`
+    creates a histogram with logarithmic bin sizes.
+
+    See_also:
+        Histogram,
+        dalicious.math.logIndex
+*/
+Histogram!T histogram(R, T = ElementType!R)(T histMin, T histMax, T binSize, R values) if (isInputRange!R)
+{
+    auto hist = typeof(return)(histMin, histMax, binSize);
+
+    hist.insert(values);
+
+    return hist;
+}
+
+/// ditto
+Histogram!T histogram(T)(T histMin, T histMax, T binSize)
+{
+    return typeof(return)(histMin, histMax, binSize);
+}
+
+/// ditto
+Histogram!(T, Yes.logIndex) logHistogram(R, T = ElementType!R)(T histMin, T histMax, size_t indexBase, R values) if (isInputRange!R)
+{
+    auto hist = typeof(return)(histMin, histMax, indexBase);
+
+    hist.insert(values);
+
+    return hist;
+}
+
+/// ditto
+Histogram!(T, Yes.logIndex) logHistogram(T)(T histMin, T histMax, size_t indexBase)
+{
+    return typeof(return)(histMin, histMax, indexBase);
+}
+
+///
+unittest
+{
+    // Generate a histogram of standard-normal-distributed numbers
+    // with 7+2 bins from -2.0 to 2.0. The additional two bins are
+    // the overflow bins.
+    auto h = histogram(-2.0, 2.0, 0.5, [
+        0.697108, 0.019264, -1.838430, 1.831528, -0.804880, -1.558828,
+        -0.131643, -0.306090, -0.397831, 0.037725, 0.328819, -0.640064,
+        0.664097, 1.156503, -0.837012, -0.969499, -1.410276, 0.501637,
+        1.521720, 1.392988, -0.619393, -0.039576, 1.937708, -1.325983,
+        -0.677214, 1.390584, 1.798133, -1.094093, 2.263360, -0.462949,
+        1.993554, 2.243889, 1.606391, 0.153866, 1.945514, 1.007849,
+        -0.663765, -0.304843, 0.617464, 0.674804, 0.038555, 1.696985,
+        1.473917, -0.244211, -1.410381, 0.201184, -0.923119, -0.220677,
+        0.045521, -1.966340,
+    ]);
+
+    assert(h.totalCount == 50);
+    assert(approxEqual(h.minValue, -1.96634));
+    assert(approxEqual(h.maxValue, 2.26336));
+    assert(approxEqual(h.sum, 10.3936));
+    assert(approxEqual(h.mean, 0.2079));
+    assert(approxEqual(h.percentile(0.5), 0.1429));
+
+    enum inf = double.infinity;
+    auto expectedHist = [
+        [-inf, 0.00],
+        [-2.0, 0.12],
+        [-1.5, 0.16],
+        [-1.0, 0.32],
+        [-0.5, 0.32],
+        [ 0.0, 0.28],
+        [ 0.5, 0.20],
+        [ 1.0, 0.20],
+        [ 1.5, 0.32],
+        [ 2.0, 0.00],
+    ];
+
+    foreach (idx, coord, double density; h)
+    {
+        assert(approxEqual(expectedHist[idx][0], coord));
+        assert(approxEqual(expectedHist[idx][1], density));
+    }
+}
+
+///
+unittest
+{
+    // Generate a histogram of geometric-distributed numbers.
+    auto h = logHistogram(0U, 50U, 10U, [
+        3U, 4U, 23U, 2U, 0U, 2U, 9U, 0U, 17U, 2U, 0U, 5U, 5U, 35U, 0U, 16U,
+        17U, 3U, 7U, 14U, 3U, 9U, 1U, 17U, 13U, 10U, 38U, 2U, 1U, 29U, 1U,
+        5U, 49U, 40U, 2U, 1U, 13U, 5U, 1U, 1U, 2U, 4U, 1U, 0U, 0U, 7U, 7U,
+        34U, 3U, 2U,
+    ]);
+
+    assert(h.totalCount == 50);
+    assert(h.minValue == 0);
+    assert(h.maxValue == 49);
+    assert(h.sum == 465);
+    assert(approxEqual(h.mean, 9.3));
+    assert(approxEqual(h.percentile(0.5), 4.5));
+
+    enum inf = double.infinity;
+    auto expectedHist = [
+        [ 0, 0.120],
+        [ 1, 0.140],
+        [ 2, 0.140],
+        [ 3, 0.080],
+        [ 4, 0.040],
+        [ 5, 0.080],
+        [ 6, 0.000],
+        [ 7, 0.060],
+        [ 8, 0.000],
+        [ 9, 0.040],
+        [10, 0.016],
+        [20, 0.004],
+        [30, 0.006],
+        [40, 0.004],
+        [50, 0.000],
+    ];
+
+    foreach (idx, coord, double density; h)
+    {
+        assert(approxEqual(expectedHist[idx][0], coord));
+        assert(approxEqual(expectedHist[idx][1], density));
+    }
 }
