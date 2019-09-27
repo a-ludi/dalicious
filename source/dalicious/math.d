@@ -3417,14 +3417,14 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
         static if (isUnsigned!T)
             assert(histMin <= value, "subtraction overflow");
 
-        return value - histMin;
+        return cast(T) (value - histMin);
     }
 
 
     private T primalValue(T nValue) const pure nothrow @safe
     in (nValue >= 0, "nValue must be non-negative")
     {
-        return nValue + histMin;
+        return cast(T) (nValue + histMin);
     }
 
 
