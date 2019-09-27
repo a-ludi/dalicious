@@ -980,7 +980,7 @@ private struct CoverageChangesImpl(MEvent)
     static struct FrontType
     {
         pos_t pos;
-        category_t level;
+        size_t level;
     }
 
     MEvent[] events;
