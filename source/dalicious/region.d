@@ -131,6 +131,20 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
         {
             mixin("alias " ~ tagAlias ~ " = tag;");
         }
+
+        /// Returns true iff `this` is located in `interval` (note: intervals are right-open).
+        bool opBinary(string op)(in TaggedInterval interval) const pure nothrow if (op == "in")
+        {
+            return this.tag == interval.tag && interval.begin <= this.value && this.value < interval.end;
+        }
+
+        int opCmp(in TaggedPoint other) const pure nothrow
+        {
+            return cmp(
+                only(this.tag, this.value),
+                only(other.tag, other.value),
+            );
+        }
     }
 
     /**
@@ -152,6 +166,21 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
         {
             assert(begin <= end, "begin must be less than or equal to end");
         }
+
+
+        /// Begin of this interval as TaggedPoint.
+        @property TaggedPoint beginPoint() pure const nothrow
+        {
+            return TaggedPoint(tag, begin);
+        }
+
+
+        /// End of this interval as TaggedPoint.
+        @property TaggedPoint endPoint() pure const nothrow
+        {
+            return TaggedPoint(tag, end);
+        }
+
 
         /// Returns the size of this interval.
         @property Number size() pure const nothrow
