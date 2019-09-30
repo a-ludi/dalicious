@@ -987,12 +987,22 @@ private struct CoverageChangesImpl(MEvent)
     private FrontType _front;
 
 
+    this(MEvent[] events)
+    {
+        this.events = events;
+
+        popFront();
+    }
+
+
     void popFront()
     {
         assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
 
         if (events.empty)
             return setEmpty();
+
+        _front.pos = events.front.pos;
 
         while (!events.empty)
         {
@@ -1020,11 +1030,13 @@ private struct CoverageChangesImpl(MEvent)
             events.popFront();
 
             if (
-                event.pos != events.front.pos ||
                 event.type == event_t.boundaryClose ||
-                events.empty
+                events.empty ||
+                event.pos != events.front.pos
             )
+            {
                 break;
+            }
         }
 
         assert(!events.empty || _front.level == 0, "level must drop to zero eventually");
