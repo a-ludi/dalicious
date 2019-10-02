@@ -8,6 +8,18 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.3.0] - 2019-10-02
+### Added
+- Added possibility to replace `acc` and `category` function of a masker
+- Added `coverageChanges` to `masker`
+- Added histogram to `math` module
+- Added some algebra for `TaggedPoint`
+
+### Fixed
+- Made `logIndex` and `inverseLogIndex` `@safe`
+- Fixed type bug
+
+
 ## [2.2.0] - 2019-09-24
 ### Added
 - Created `masker` algorithm
