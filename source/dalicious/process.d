@@ -29,6 +29,7 @@ import std.range.primitives :
     ElementType,
     isInputRange;
 import std.traits : isSomeString;
+import std.typecons : Flag, Yes;
 
 
 import dalicious.log : LogLevel;
@@ -375,4 +376,56 @@ private static final class LinesPipe(CommandInfo)
             return false;
         }
     }
+}
+
+
+/**
+    Returns true iff `name` can be executed via the process function in
+    `std.process`. By default, `PATH` will be searched if `name` does not
+    contain directory separators.
+
+    Params:
+        name       = Path to file or name of executable
+        searchPath = Determines wether or not the path should be searched.
+*/
+version (Posix) bool isExecutable(scope string name, Flag!"searchPath" searchPath = Yes.searchPath)
+{
+    import std.algorithm : any;
+    import std.path : isDirSeparator;
+
+    if (!searchPath || any!isDirSeparator(name))
+        return isExecutableFile(name);
+    else
+        return searchPathFor(name) !is null;
+}
+
+
+version (Posix) private bool isExecutableFile(scope string path) nothrow
+{
+    import core.sys.posix.unistd : access, X_OK;
+    import std.string : toStringz;
+
+    return (access(path.toStringz(), X_OK) == 0);
+}
+
+
+version (Posix) private string searchPathFor(scope string executable)
+{
+    import std.algorithm.iteration : splitter;
+    import std.conv : to;
+    import std.path : buildPath;
+    static import core.stdc.stdlib;
+
+    auto pathz = core.stdc.stdlib.getenv("PATH");
+    if (pathz == null)  return null;
+
+    foreach (dir; splitter(to!string(pathz), ':'))
+    {
+        auto execPath = buildPath(dir, executable);
+
+        if (isExecutableFile(execPath))
+            return execPath;
+    }
+
+    return null;
 }
