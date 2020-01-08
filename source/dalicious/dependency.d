@@ -136,10 +136,10 @@ unittest
 */
 version(Posix) void enforceExternalDepencenciesAvailable(Modules...)()
 {
+    import dalicious.process : isExecutable;
     import std.array : array;
-    import std.algorithm :
-        map,
-        startsWith;
+    import std.algorithm : filter;
+    import std.exception : enforce;
     import std.format : format;
     import std.process : execute;
     import std.range : enumerate;
@@ -149,21 +149,9 @@ version(Posix) void enforceExternalDepencenciesAvailable(Modules...)()
 
     static if (modulesDeps.length > 0)
     {
-        enum whichBinary = "/bin/which";
-
-        auto result = execute(
-            [whichBinary, "--skip-alias", "--skip-functions"] ~
-            modulesDeps
-                .map!(extDep => extDep.executable)
-                .array
-        );
-
-        ExternalDependency[] missingExternalTools;
-        missingExternalTools.reserve(result.status);
-
-        foreach (i, line; enumerate(lineSplitter(result.output)))
-            if (line.startsWith(whichBinary))
-                missingExternalTools ~= modulesDeps[i];
+        auto missingExternalTools = modulesDeps
+            .filter!(extDep => !isExecutable(extDep.executable))
+            .array;
 
         if (missingExternalTools.length > 0)
             throw new ExternalDependencyMissing(missingExternalTools);
@@ -197,6 +185,65 @@ unittest
     //     - this_too_is_missing (part of `mypack`; see http://example.com/)
     //
     //     Check your PATH and/or install the required software.
+}
+
+
+unittest
+{
+    import std.exception : assertThrown;
+
+    enum dependencies = [
+        ExternalDependency("/bin/sh"),
+        ExternalDependency("sh"),
+        ExternalDependency("this_too_is_missing", "mypack", "http://example.com/"),
+    ];
+
+    struct Caller
+    {
+        @(dependencies[0])
+        @(dependencies[1])
+        void makeCall() { }
+    }
+
+    try
+    {
+        enforceExternalDepencenciesAvailable!Caller();
+    }
+    catch (ExternalDependencyMissing e)
+    {
+        assert(e.missingExternalTools[0] == dependencies[$ - 1]);
+    }
+}
+
+
+unittest
+{
+    import std.exception : assertThrown;
+    import std.algorithm : map;
+    import std.array : array;
+    import std.format : format;
+    import std.range : iota;
+
+    enum dependencies = iota(100)
+        .map!(i => ExternalDependency(format!"this_is_missing_%d"(i)))
+        .array;
+
+    struct Caller
+    {
+        mixin(format!q{
+            %-(@(dependencies[%d])%)])
+            void makeCall() { }
+        }(iota(dependencies.length)));
+    }
+
+    try
+    {
+        enforceExternalDepencenciesAvailable!Caller();
+    }
+    catch (ExternalDependencyMissing e)
+    {
+        assert(e.missingExternalTools.length == dependencies.length);
+    }
 }
 
 

@@ -390,6 +390,7 @@ private static final class LinesPipe(CommandInfo)
 */
 version (Posix) bool isExecutable(scope string name, Flag!"searchPath" searchPath = Yes.searchPath)
 {
+    // Implementation is analogous to logic in `std.process.spawnProcessImpl`.
     import std.algorithm : any;
     import std.path : isDirSeparator;
 
@@ -402,6 +403,7 @@ version (Posix) bool isExecutable(scope string name, Flag!"searchPath" searchPat
 
 version (Posix) private bool isExecutableFile(scope string path) nothrow
 {
+    // Implementation is analogous to private function `std.process.isExecutable`.
     import core.sys.posix.unistd : access, X_OK;
     import std.string : toStringz;
 
@@ -411,6 +413,7 @@ version (Posix) private bool isExecutableFile(scope string path) nothrow
 
 version (Posix) private string searchPathFor(scope string executable)
 {
+    // Implementation is analogous to private function `std.process.searchPathFor`.
     import std.algorithm.iteration : splitter;
     import std.conv : to;
     import std.path : buildPath;
