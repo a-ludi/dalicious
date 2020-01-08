@@ -3439,6 +3439,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
             # minValue=%%%1$c
             # maxValue=%%%1$c
             # sum=%%%1$c
+            # mean=%%g
             %%-(%%s\%%)
         `.outdent.strip.tr(`\`, "\n"))(isFloatingPoint!T ? 'g' : 'd');
         enum histLineFmt = isFloatingPoint!T
@@ -3450,6 +3451,7 @@ struct Histogram(T, Flag!"logIndex" logIndex = No.logIndex)
             minValue,
             maxValue,
             sum,
+            mean,
             densities.map!(v => format!histLineFmt(v.coord, v.density)),
         );
     }
