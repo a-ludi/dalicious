@@ -8,6 +8,15 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.4.0] - 2020-01-14
+### Added
+- Added mean in `Histogram.toString`
+- Added `isExecutable`
+
+### Fixed
+- Fixed check for external dependencies
+
+
 ## [2.3.0] - 2019-10-02
 ### Added
 - Added possibility to replace `acc` and `category` function of a masker
