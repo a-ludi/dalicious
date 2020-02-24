@@ -25,6 +25,40 @@ import std.typecons;
 
 debug import std.stdio : writeln;
 
+
+/**
+    Standardized value that signifies undefined for all numeric types. It is
+    `NaN` for floating point types and the maximum representable value for
+    integer types.
+
+    See_also: `isUndefined`
+*/
+template undefined(T) if (isNumeric!T)
+{
+    static if (is(typeof(T.nan)))
+        enum undefined = T.nan;
+    else static if (is(typeof(T.max)))
+        enum undefined = T.max;
+    else
+        static assert(0, "`undefined` is undefined for type " ~ E.stringof);
+}
+
+
+/**
+    Check if `value` has the standardized undefined value.
+
+    See_also:   `undefined`
+    Returns:    True iff value is undefined according to `undefined`.
+*/
+bool isUndefined(T)(T value) if (is(typeof(undefined!T)))
+{
+    static if (isNaN(undefined!T))
+        return isNaN(value);
+    else
+        return value < undefined!T;
+}
+
+
 /// Calculate the mean of range.
 ElementType!Range mean(Range)(Range values) if (isForwardRange!Range)
 {
@@ -78,21 +112,20 @@ unittest
     }
 }
 
-/// Calculate the median of range.
+/**
+    Calculate the median of `map`ped values. The elements of `values` are
+    passed to `map` before calculating the median. This removes the necessity
+    of creating a proxy range.
+
+    Returns:    Median of range or `undefined` iff `values` is empty.
+*/
 auto median(alias map = "a", Range)(Range values)
 {
     alias _map = unaryFun!map;
     alias E = typeof(_map(values.front));
 
-    static if (is(typeof(E.nan)))
-        enum undefined = E.nan;
-    else static if (is(typeof(E.max)))
-        enum undefined = E.max;
-    else
-        static assert(0, "unhandled type of mapped elements: " ~ E.stringof);
-
     if (values.length == 0)
-        return undefined;
+        return undefined!E;
 
     auto middleIdx = values.length / 2;
     auto useAverage = values.length > 1 && values.length % 2 == 0;
@@ -209,13 +242,15 @@ unittest
 /**
     Calculate the Nxx (e.g. N50) of values. `values` will be `sort`ed in the
     process. If this is undesired the range must be `dup`licated beforehands.
+    The elements of `values` are passed to `map` before calculating the
+    median. This removes the necessity of creating a proxy range.
 
     The CTFE-version differs from the dynamic implementation only in a static
     check for a valid value of `xx` and the order of arguments.
     The CTFE-version should be preferred if possible because it looks nicer.
 
-    Returns:    Nxx statistic or undefined value (`nan` for floating-point
-                and `max` for integer elements; use `val < E.max` for checking)
+    Returns:    Nxx statistic or `undefined` value iff `values` is empty or
+                `map`ped `values` sum up to less than `totalSize`.
 */
 auto N(real xx, alias map = "a", Range, Num)(Range values, Num totalSize)
 {
@@ -231,15 +266,8 @@ auto N(alias map = "a", Range, Num)(Range values, real xx, Num totalSize)
     alias _map = unaryFun!map;
     alias E = typeof(_map(values.front));
 
-    static if (is(typeof(E.nan)))
-        enum undefined = E.nan;
-    else static if (is(typeof(E.max)))
-        enum undefined = E.max;
-    else
-        static assert(0, "unhandled type of mapped elements: " ~ E.stringof);
-
     if (values.length == 0)
-        return undefined;
+        return undefined!E;
 
     auto xxPercentile = xx/100.0 * totalSize;
     auto sortedValues = values.sort!((a, b) => _map(a) > _map(b));
@@ -248,7 +276,7 @@ auto N(alias map = "a", Range, Num)(Range values, real xx, Num totalSize)
         .countUntil!((partialSum, total) => partialSum >= total)(xxPercentile);
 
     if (targetIndex < 0 || values.length <= targetIndex)
-        return undefined;
+        return undefined!E;
     else
         return _map(sortedValues[targetIndex]);
 }
