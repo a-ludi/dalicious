@@ -148,22 +148,51 @@ ElementType!Range stddev(Range, M)(Range values, M sampleMean) if (isForwardRang
 }
 
 
-/// Calculate the Nxx (e.g. N50) of values.
-ElementType!Range N(real xx, Range, Num)(Range values, Num totalSize) if (__traits(compiles, sort(values)))
+/**
+    Calculate the Nxx (e.g. N50) of values. `values` will be `sort`ed in the
+    process. If this is undesired the range must be `dup`licated beforehands.
+
+    The CTFE-version differs from the dynamic implementation only in a static
+    check for a valid value of `xx` and the order of arguments.
+    The CTFE-version should be preferred if possible because it looks nicer.
+
+    Returns:    Nxx statistic or undefined value (`nan` for floating-point
+                and `max` for integer elements; use `val < E.max` for checking)
+*/
+auto N(real xx, alias map = "a", Range, Num)(Range values, Num totalSize)
 {
     static assert(0 < xx && xx < 100, "N" ~ xx.to!string ~ " is undefined");
-    assert(values.length > 0, "N" ~ xx.to!string ~ " is undefined for empty set");
-    auto xxPercentile = xx/100.0 * totalSize;
-    auto sortedValues = values.sort;
-    auto targetIndex = sortedValues
-        .retro
-        .cumulativeFold!"a + b"(cast(ElementType!Range) 0)
-        .countUntil!"a >= b"(xxPercentile);
 
-    if (targetIndex.among(-1, values.length))
-        return 0;
+    return N!map(values, xx, totalSize);
+}
+
+auto N(alias map = "a", Range, Num)(Range values, real xx, Num totalSize)
+{
+    assert(0 < xx && xx < 100, format!"N%f is undefined"(xx));
+
+    alias _map = unaryFun!map;
+    alias E = typeof(_map(values.front));
+
+    static if (is(typeof(E.nan)))
+        enum undefined = E.nan;
+    else static if (is(typeof(E.max)))
+        enum undefined = E.max;
     else
-        return sortedValues[$ - targetIndex - 1];
+        static assert(0, "unhandled type of mapped elements: " ~ E.stringof);
+
+    if (values.length == 0)
+        return undefined;
+
+    auto xxPercentile = xx/100.0 * totalSize;
+    auto sortedValues = values.sort!((a, b) => _map(a) > _map(b));
+    auto targetIndex = sortedValues
+        .cumulativeFold!((acc, el) => acc + _map(el))(cast(E) 0)
+        .countUntil!((partialSum, total) => partialSum >= total)(xxPercentile);
+
+    if (targetIndex < 0 || values.length <= targetIndex)
+        return undefined;
+    else
+        return _map(sortedValues[targetIndex]);
 }
 
 unittest
@@ -174,7 +203,9 @@ unittest
         enum N50 = 8;
         enum N10 = 10;
 
+        assert(N(values, 50, totalSize) == N50);
         assert(N!50(values, totalSize) == N50);
+        assert(N(values, 10, totalSize) == N10);
         assert(N!10(values, totalSize) == N10);
     }
     {
@@ -182,9 +213,11 @@ unittest
         auto values = [2, 2, 2, 3, 3, 4, 8, 8];
         enum N50 = 8;
 
+        assert(N(values, 50, totalSize) == N50);
         assert(N!50(values, totalSize) == N50);
     }
 }
+
 
 enum RoundingMode : byte
 {
