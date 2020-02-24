@@ -149,6 +149,64 @@ ElementType!Range stddev(Range, M)(Range values, M sampleMean) if (isForwardRang
 
 
 /**
+    Eliminate outliers the deviate more than expected from the sample median.
+    A data point `x` is an outlier iff
+
+        abs(x - median) > lambda*sqrt(stddev(values))
+
+    Params:
+        values      Range of values.
+        lambda      Level of confidence.
+    Returns:
+        `values` without outliers.
+*/
+auto eliminateOutliers(R, N)(R values, N lambda) if (isForwardRange!R)
+{
+    return eliminateOutliers(values, lambda, mean(values.save));
+}
+
+/// ditto
+auto eliminateOutliers(R, N, M)(
+    R values,
+    N lambda,
+    M sampleMean,
+) if (isForwardRange!R)
+{
+    return eliminateOutliers(values, lambda, sampleMean, stddev(values.save, sampleMean));
+}
+
+/// ditto
+auto eliminateOutliers(R, N, M, S)(
+    R values,
+    N lambda,
+    M sampleMean,
+    S sampleStddev,
+) if (isForwardRange!R)
+{
+    return eliminateOutliers(values, lambda, sampleMean, sampleStddev, median(values.save));
+}
+
+/// ditto
+auto eliminateOutliers(R, N, M, S, D)(
+    R values,
+    N lambda,
+    M sampleMean,
+    S sampleStddev,
+    D sampleMedian,
+) if (isForwardRange!R)
+{
+    auto threshold = lambda * sqrt(cast(double) sampleStddev);
+
+    return values.filter!(n => absdiff(n, sampleMedian) <= threshold);
+}
+
+unittest
+{
+    assert(equal([1].eliminateOutliers(1), [1]));
+}
+
+
+/**
     Calculate the Nxx (e.g. N50) of values. `values` will be `sort`ed in the
     process. If this is undesired the range must be `dup`licated beforehands.
 
