@@ -132,6 +132,22 @@ unittest
     }
 }
 
+
+/// Calculate the standard deviation (`sigma^^2`) of the sample.
+ElementType!Range stddev(Range)(Range values) if (isForwardRange!Range)
+{
+    auto sampleMean = mean(values.save);
+
+    return stddev(values, sampleMean);
+}
+
+/// ditto
+ElementType!Range stddev(Range, M)(Range values, M sampleMean) if (isForwardRange!Range)
+{
+    return values.save.map!(n => (n - sampleMean)^^2).sum / cast(ElementType!Range) values.save.walkLength;
+}
+
+
 /// Calculate the Nxx (e.g. N50) of values.
 ElementType!Range N(real xx, Range, Num)(Range values, Num totalSize) if (__traits(compiles, sort(values)))
 {
