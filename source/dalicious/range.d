@@ -8,9 +8,16 @@
 */
 module dalicious.range;
 
+import std.algorithm : map;
 import std.functional : unaryFun;
 import std.meta : AliasSeq, staticMap;
-import std.range : ElementType, isInputRange;
+import std.range :
+    chain,
+    ElementType,
+    hasLength,
+    hasSlicing,
+    iota,
+    isInputRange;
 import std.traits : rvalueOf;
 import std.typecons : tuple, Tuple;
 
@@ -89,6 +96,43 @@ unittest
 
     auto chunks = iota(10).arrayChunks(2);
     assert(chunks.array == [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]]);
+}
+
+/**
+    Generate a range of `num` even-sized slices.
+
+    Always returns a range of slices in contrast to `std.range.evenChunks`
+    which returns a range of `take`s.
+
+    See Also: `std.range.evenChunks`
+    Returns: Range of even slices.
+*/
+auto evenSlices(Source)(Source range, in size_t sliceCount)
+    if (isInputRange!Source && hasLength!Source && hasSlicing!Source)
+{
+    assert(sliceCount > 0, "sliceCount must be positive");
+
+    auto sliceSize = range.length / sliceCount;
+    auto numLargerSlices = range.length % sliceCount;
+
+    return chain(
+        iota(numLargerSlices).map!(i => range[i*(sliceSize + 1) .. (i + 1)*(sliceSize + 1)]),
+        iota(numLargerSlices, sliceCount).map!(i => range[i*sliceSize + numLargerSlices .. (i + 1)*sliceSize + numLargerSlices]),
+    );
+}
+
+///
+unittest
+{
+    import std.algorithm : equal;
+    import std.range : iota;
+
+    auto slices = iota(10).evenSlices(3);
+    assert(equal!equal(slices, [
+        [0, 1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+    ]));
 }
 
 /// Generate a tuple of tuples of chunkSize.
