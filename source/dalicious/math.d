@@ -79,17 +79,29 @@ unittest
 }
 
 /// Calculate the median of range.
-ElementType!Range median(Range)(Range values) if (__traits(compiles, sort(values)))
+auto median(alias map = "a", Range)(Range values)
 {
-    assert(values.length > 0, "median is undefined for empty set");
+    alias _map = unaryFun!map;
+    alias E = typeof(_map(values.front));
+
+    static if (is(typeof(E.nan)))
+        enum undefined = E.nan;
+    else static if (is(typeof(E.max)))
+        enum undefined = E.max;
+    else
+        static assert(0, "unhandled type of mapped elements: " ~ E.stringof);
+
+    if (values.length == 0)
+        return undefined;
+
     auto middleIdx = values.length / 2;
     auto useAverage = values.length > 1 && values.length % 2 == 0;
-    auto sortedValues = values.sort;
+    auto sortedValues = values.sort!((a, b) => _map(a) < _map(b));
 
     if (useAverage)
-        return (sortedValues[middleIdx - 1] + sortedValues[middleIdx]) / 2;
+        return (_map(sortedValues[middleIdx - 1]) + _map(sortedValues[middleIdx])) / 2;
     else
-        return values[middleIdx];
+        return _map(sortedValues[middleIdx]);
 }
 
 unittest
