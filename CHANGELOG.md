@@ -8,6 +8,18 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.0.0] - 2020-02-27
+### Added
+- Added `evenSlices` similar to `std.range.evenChunks`
+- Added `stddev`
+- Added `eliminateOutliers`
+
+### Changed
+- Extended `median` and `N!xx` with a `map`ping function
+- Changed `median` and `N!xx` to return `undefined` value if the statistic is
+  undefined; these changes are incompatible to previous versions
+
+
 ## [2.4.0] - 2020-01-14
 ### Added
 - Added mean in `Histogram.toString`
