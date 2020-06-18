@@ -8,6 +8,11 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.0] - 2020-02-27
+### Added
+- Added `quantiles`
+
+
 ## [3.0.0] - 2020-02-27
 ### Added
 - Added `evenSlices` similar to `std.range.evenChunks`
