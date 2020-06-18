@@ -113,56 +113,181 @@ unittest
 }
 
 /**
-    Calculate the median of `map`ped values. The elements of `values` are
-    passed to `map` before calculating the median. This removes the necessity
+    Calculate the quantiles of values mapped with `fun`. The elements of
+    `values` are passed to `fun` before calculating the quantiles. This
+    removes the necessity of creating a proxy range.
+
+    All quantiles are `undefined` if `values` is empty.
+
+    Returns:    Range of quantiles. The returned range `isRandomAccessRange`,
+                `hasSlicing` and has the same length as `ps`.
+*/
+auto quantiles(alias fun = "a", Range, F)(Range values, F[] ps...)
+    if (isFloatingPoint!F)
+in (ps.all!"0 < a && a < 1", "all ps must be 0 < p < 1")
+{
+    alias f = unaryFun!fun;
+    alias E = typeof(f(values.front));
+
+    auto sortedValues = values.sort!((a, b) => f(a) < f(b));
+    auto mappedValues = sortedValues.map!f;
+    auto n = mappedValues.length;
+
+    auto calcQuantile(double q)
+    {
+        if (n == 0)
+        {
+            return undefined!E;
+        }
+        else if (isInteger(n * q))
+        {
+            auto i = cast(size_t) round(n * q);
+
+            if (0 < i && i < n)
+                return (mappedValues[i - 1] + mappedValues[i]) / 2;
+            else if (i == n)
+                return mappedValues[n - 1];
+            else
+                return mappedValues[0];
+        }
+        else
+        {
+            return mappedValues[cast(size_t) stdFloor(n * q)];
+        }
+    }
+
+    auto _quantiles = ps.map!calcQuantile;
+
+    alias Q = typeof(_quantiles);
+    static assert(isBidirectionalRange!Q);
+    static assert(isRandomAccessRange!Q);
+    static assert(hasSlicing!Q);
+    static assert(hasLength!Q);
+
+    return _quantiles;
+}
+
+unittest {
+    auto values = [4, 2, 8];
+    assert(values.quantiles(
+        1.0/3.0,
+        2.0/3.0,
+    ).equal([
+        3,
+        6,
+    ]));
+}
+
+unittest {
+    auto values = [4, 2, 8, 0, 13];
+    assert(values.quantiles(
+        1/4f,
+        2/4f,
+        3/4f,
+    ).equal([
+        2,
+        4,
+        8,
+    ]));
+}
+
+unittest {
+    auto values = [4, 2, 8];
+    assert(values.quantiles(
+        1/3f,
+        2/3f,
+    ).equal([
+        3,
+        6,
+    ]));
+}
+
+unittest {
+    auto values = [4, 2, 8];
+    assert(values.quantiles(
+        1e-6,
+        1 - 1e-6,
+    ).equal([
+        2,
+        8,
+    ]));
+}
+
+unittest {
+    double[] values = [];
+    assert(values.quantiles(
+        0.36,
+        0.46,
+        0.53,
+        0.85,
+        0.95,
+    ).all!isUndefined);
+}
+
+unittest {
+    auto values = [0.839124, 0.506056, 0.661209, 0.235569, 0.747409, 0.182975,
+                   0.348437, 0.322757, 0.237597, 0.624974, 0.490688];
+    assert(values.quantiles(
+        0.36,
+        0.46,
+        0.53,
+        0.85,
+        0.95,
+    ).equal!approxEqual([
+        0.322757,
+        0.490688,
+        0.490688,
+        0.747409,
+        0.839124,
+    ]));
+}
+
+
+/**
+    Calculate the median of `fun`ed values. The elements of `values` are
+    passed to `fun` before calculating the median. This removes the necessity
     of creating a proxy range.
 
     Returns:    Median of range or `undefined` iff `values` is empty.
 */
-auto median(alias map = "a", Range)(Range values)
+auto median(alias fun = "a", Range)(Range values)
 {
-    alias _map = unaryFun!map;
-    alias E = typeof(_map(values.front));
-
-    if (values.length == 0)
-        return undefined!E;
-
-    auto middleIdx = values.length / 2;
-    auto useAverage = values.length > 1 && values.length % 2 == 0;
-    auto sortedValues = values.sort!((a, b) => _map(a) < _map(b));
-
-    if (useAverage)
-        return (_map(sortedValues[middleIdx - 1]) + _map(sortedValues[middleIdx])) / 2;
-    else
-        return _map(sortedValues[middleIdx]);
+    return quantiles!fun(values, 0.5)[0];
 }
 
-unittest
-{
-    {
-        auto values = [4, 2, 8];
-        assert(values.median == 4);
-    }
-    {
-        auto values = [4, 3, 2, 8];
-        assert(values.median == 3);
-    }
-    {
-        auto values = [4, 6, 2, 8];
-        assert(values.median == 5);
-    }
-    {
-        auto values = [2, 1, 3, 0, 4, 9, 8, 5, 6, 3, 9];
-        assert(values.median == 4);
-    }
-    {
-        auto values = [2.0, 1.0, 4.0, 3.0];
-        assert(values.median == 2.5);
-    }
-    {
-        auto values = [2.0, 1.0, 4.0, 3.0, 5.0];
-        assert(values.median == 3.0);
-    }
+unittest {
+    auto values = [4, 2, 8];
+    assert(values.median == 4);
+}
+
+unittest {
+    auto values = [4, 3, 2, 8];
+    assert(values.median == 3);
+}
+
+unittest {
+    auto values = [4, 6, 2, 8];
+    assert(values.median == 5);
+}
+
+unittest {
+    auto values = [2, 1, 3, 0, 4, 9, 8, 5, 6, 3, 9];
+    assert(values.median == 4);
+}
+
+unittest {
+    auto values = [2.0, 1.0, 4.0, 3.0];
+    assert(values.median == 2.5);
+}
+
+unittest {
+    auto values = [2.0, 1.0, 4.0, 3.0, 5.0];
+    assert(values.median == 3.0);
+}
+
+unittest {
+    double[] values = [];
+    assert(isUndefined(values.median));
 }
 
 
@@ -391,6 +516,15 @@ unittest
     assert(ceildiv(-4, 4) == -1);
     assert(ceildiv(-4, 3) == -1);
 }
+
+
+bool isInteger(F)(F x, F eps = 1e-5) pure nothrow @safe
+    if (isFloatingPoint!F)
+in (0 <= eps)
+{
+    return abs(x - round(x)) <= eps;
+}
+
 
 class EdgeExistsException : Exception
 {
