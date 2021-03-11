@@ -7,6 +7,10 @@ The format is based on
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+### Added
+- Encode/decode a pair of integers in a single integer.
+
 
 ## [3.1.0] - 2020-02-27
 ### Added
