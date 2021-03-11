@@ -11,6 +11,9 @@ and this project adheres to
 ### Added
 - Encode/decode a pair of integers in a single integer.
 
+### Fixed
+- Compiler error due to non-constant `case` value
+
 
 ## [3.1.0] - 2020-02-27
 ### Added
