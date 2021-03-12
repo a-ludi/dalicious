@@ -29,7 +29,7 @@ public:
     {
         @disable this();
 
-        this(size_t bufferSize)
+        this(size_t bufferSize) pure nothrow @safe
         {
             this._buffer = new T[bufferSize];
         }
@@ -39,31 +39,31 @@ public:
     static if (staticBufferSize < size_t.max)
         enum bufferSize = _buffer.length;
     else
-        @property size_t bufferSize() const pure nothrow @safe
+        @property size_t bufferSize() const pure nothrow @safe @nogc
         {
             return _buffer.length;
         }
 
 
-    @property RingBuffer!(T, staticBufferSize) save() const pure nothrow @trusted
+    @property RingBuffer!(T, staticBufferSize) save() const pure nothrow @trusted @nogc
     {
         return cast(typeof(return)) this;
     }
 
 
-    @property bool empty() const pure nothrow @safe
+    @property bool empty() const pure nothrow @safe @nogc
     {
         return _frontPtr < _backPtr || bufferSize == 0;
     }
 
 
-    @property size_t length() const pure nothrow @safe
+    @property size_t length() const pure nothrow @safe @nogc
     {
         return empty ? 0 : _frontPtr - _backPtr + 1;
     }
 
 
-    @property auto ref T front()
+    @property auto ref T front() pure nothrow @safe @nogc
     {
         assert(!empty, "Attempting to fetch the front of an empty RingBuffer");
 
@@ -79,7 +79,7 @@ public:
     }
 
 
-    @property auto ref T back()
+    @property auto ref T back() pure nothrow @safe @nogc
     {
         assert(!empty, "Attempting to fetch the back of an empty RingBuffer");
 
@@ -95,7 +95,7 @@ public:
     }
 
 
-    void popFront() pure nothrow @safe
+    void popFront() pure nothrow @safe @nogc
     {
         assert(!empty, "Attempting to popFront an empty RingBuffer");
 
@@ -103,7 +103,7 @@ public:
     }
 
 
-    void popBack() pure nothrow @safe
+    void popBack() pure nothrow @safe @nogc
     {
         assert(!empty, "Attempting to popBack an empty RingBuffer");
 
@@ -111,7 +111,7 @@ public:
     }
 
 
-    void pushFront(T value)
+    void pushFront(T value) pure nothrow @safe @nogc
     {
         assert(bufferSize > 0, "Attempting to pushFront an zero-sized RingBuffer");
 
@@ -127,7 +127,7 @@ public:
     alias put = pushFront;
 
 
-    void pushBack(T value)
+    void pushBack(T value) pure nothrow @safe @nogc
     {
         assert(bufferSize > 0, "Attempting to pushBack an zero-sized RingBuffer");
 
@@ -142,7 +142,7 @@ public:
     }
 
 
-    private size_t indexOf(ptrdiff_t ptr) const pure nothrow @safe
+    private size_t indexOf(ptrdiff_t ptr) const pure nothrow @safe @nogc
     {
         // make sure the index is positive
         return cast(size_t) ((ptr % bufferSize) + bufferSize) % bufferSize;
