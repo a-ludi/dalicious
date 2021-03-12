@@ -131,10 +131,12 @@ public:
     {
         assert(bufferSize > 0, "Attempting to pushBack an zero-sized RingBuffer");
 
-        --_backPtr;
+        auto wasEmpty = empty;
 
-        if (indexOf(_frontPtr) == indexOf(_backPtr))
+        --_backPtr;
+        if (!wasEmpty && indexOf(_backPtr) == indexOf(_frontPtr))
             --_frontPtr;
+        normalizePtrs();
 
         back = value;
     }
@@ -265,4 +267,22 @@ unittest
     assert(buffer.front == 5);
     assert(buffer.back == 1);
     assert(equal(buffer, [5, 4, 3, 2, 1]));
+}
+
+unittest
+{
+    import std.algorithm;
+
+    auto buffer = RingBuffer!int(5);
+
+    buffer.pushBack(1);
+    buffer.pushBack(2);
+    buffer.pushBack(3);
+    buffer.pushBack(4);
+    buffer.pushBack(5);
+    buffer.pushBack(6);
+
+    assert(buffer.front == 2);
+    assert(buffer.back == 6);
+    assert(equal(buffer, [2, 3, 4, 5, 6]));
 }
