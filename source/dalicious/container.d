@@ -9,6 +9,7 @@
 module dalicious.container;
 
 import core.exception;
+import std.math;
 
 
 /// An array-based implementation of a ring buffer.
@@ -100,6 +101,7 @@ public:
         assert(!empty, "Attempting to popFront an empty RingBuffer");
 
         --_frontPtr;
+        normalizePtrs();
     }
 
 
@@ -108,6 +110,7 @@ public:
         assert(!empty, "Attempting to popBack an empty RingBuffer");
 
         ++_backPtr;
+        normalizePtrs();
     }
 
 
@@ -120,6 +123,7 @@ public:
         ++_frontPtr;
         if (!wasEmpty && indexOf(_backPtr) == indexOf(_frontPtr))
             ++_backPtr;
+        normalizePtrs();
 
         front = value;
     }
@@ -146,6 +150,28 @@ public:
     {
         // make sure the index is positive
         return cast(size_t) ((ptr % bufferSize) + bufferSize) % bufferSize;
+    }
+
+
+    private void normalizePtrs() pure nothrow @safe @nogc
+    {
+        if (abs(_frontPtr) <= bufferSize || abs(_backPtr) <= bufferSize)
+            return;
+
+        if (empty)
+        {
+            _frontPtr = -1;
+            _backPtr = 0;
+        }
+        else
+        {
+            assert(_frontPtr >= _backPtr);
+            _frontPtr = indexOf(_frontPtr);
+            _backPtr = indexOf(_backPtr);
+
+            if (_frontPtr < _backPtr)
+                _frontPtr += bufferSize;
+        }
     }
 }
 
@@ -275,12 +301,12 @@ unittest
 
     auto buffer = RingBuffer!int(5);
 
-    buffer.pushBack(1);
-    buffer.pushBack(2);
-    buffer.pushBack(3);
-    buffer.pushBack(4);
-    buffer.pushBack(5);
-    buffer.pushBack(6);
+    buffer.pushBack(1); // [1]
+    buffer.pushBack(2); // [1, 2]
+    buffer.pushBack(3); // [1, 2, 3]
+    buffer.pushBack(4); // [1, 2, 3, 4]
+    buffer.pushBack(5); // [1, 2, 3, 4, 5]
+    buffer.pushBack(6); // [2, 3, 4, 5, 6]
 
     assert(buffer.front == 2);
     assert(buffer.back == 6);
