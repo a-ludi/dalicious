@@ -526,8 +526,6 @@ in (0 <= eps)
 }
 
 
-
-
 /// Convert to given type without errors by bounding values to target type
 /// limits.
 IntTo boundedConvert(IntTo, IntFrom)(IntFrom value) pure nothrow @safe @nogc
@@ -2191,7 +2189,7 @@ struct NaturalNumberSet
     private static enum size_t fullPart = ~emptyPart;
 
     private size_t[] parts;
-    private size_t nMax;
+    private size_t numSetBits;
 
     this(size_t initialNumElements, Flag!"addAll" addAll = No.addAll)
     {
@@ -2203,6 +2201,7 @@ struct NaturalNumberSet
                 parts[i] = fullPart;
             foreach (i; initialNumElements / partSize .. initialNumElements)
                 add(i);
+            numSetBits = initialNumElements;
         }
     }
 
@@ -2215,90 +2214,94 @@ struct NaturalNumberSet
 
         foreach (i; initialElements)
             set.add(i);
+        set.numSetBits = set.countSetBits();
 
         return set;
     }
 
-    this(this)
+    this(this) pure nothrow @safe
     {
         parts = parts.dup;
     }
 
-    private this(size_t[] parts)
+    private this(size_t[] parts) pure nothrow @safe @nogc
     {
         this.parts = parts;
+        this.numSetBits = countSetBits();
     }
 
-    private bool inBounds(in size_t n) const pure nothrow
+    private bool inBounds(in size_t n) const pure nothrow @safe @nogc
     {
-        return n < nMax;
+        return n < capacity;
     }
 
-    void reserveFor(in size_t n)
+    void reserveFor(in size_t n) pure nothrow @safe
     {
         if (parts.length == 0)
         {
             parts.length = max(1, ceildiv(n, partSize));
-            nMax = parts.length * partSize;
         }
 
         while (!inBounds(n))
         {
             parts.length *= 2;
-            nMax = parts.length * partSize;
         }
     }
 
-    @property size_t capacity() pure const nothrow
+    @property size_t capacity() const pure nothrow @safe @nogc
     {
-        return nMax;
+        return parts.length * partSize;
     }
 
-    private size_t partIdx(in size_t n) const pure nothrow
+    private size_t partIdx(in size_t n) const pure nothrow @safe @nogc
     {
         return n / partSize;
     }
 
-    private size_t idxInPart(in size_t n) const pure nothrow
+    private size_t idxInPart(in size_t n) const pure nothrow @safe @nogc
     {
         return n % partSize;
     }
 
-    private size_t itemMask(in size_t n) const pure nothrow
+    private size_t itemMask(in size_t n) const pure nothrow @safe @nogc
     {
         return firstBit << idxInPart(n);
     }
 
-    static size_t inverse(in size_t n) pure nothrow
+    static size_t inverse(in size_t n) pure nothrow @safe @nogc
     {
         return n ^ fullPart;
     }
 
-    void add(in size_t n)
+    void add(in size_t n) pure nothrow
     {
+        import core.bitop : testSetBit = bts;
+
         reserveFor(n);
 
-        parts[partIdx(n)] |= itemMask(n);
+        if (testSetBit(parts.ptr, n) == 0)
+            ++numSetBits;
     }
 
     void remove(in size_t n)
     {
-        if (!inBounds(n))
-        {
-            return;
-        }
+        import core.bitop : testResetBit = btr;
 
-        parts[partIdx(n)] &= inverse(itemMask(n));
+        if (!inBounds(n))
+            return;
+
+        if (testResetBit(parts.ptr, n) != 0)
+            --numSetBits;
     }
 
-    bool has(in size_t n) const pure nothrow
+    bool has(in size_t n) const pure nothrow @nogc
     {
-        if (!inBounds(n))
-        {
-            return false;
-        }
+        import core.bitop : testBit = bt;
 
-        return (parts[partIdx(n)] & itemMask(n)) != emptyPart;
+        if (!inBounds(n))
+            return false;
+
+        return testBit(parts.ptr, n) != 0;
     }
 
     bool opBinaryRight(string op)(in size_t n) const pure nothrow if (op == "in")
@@ -2315,6 +2318,7 @@ struct NaturalNumberSet
     {
         foreach (ref part; parts)
             part = emptyPart;
+        numSetBits = 0;
     }
 
     bool opBinary(string op)(in NaturalNumberSet other) const pure nothrow if (op == "==")
@@ -2371,7 +2375,6 @@ struct NaturalNumberSet
     {
         NaturalNumberSet result;
         result.parts.length = max(this.parts.length, other.parts.length);
-        result.nMax = max(this.nMax, other.nMax);
 
         auto numCommonParts = min(this.parts.length, other.parts.length);
 
@@ -2385,6 +2388,8 @@ struct NaturalNumberSet
             if (other.parts.length > numCommonParts)
                 result.parts[numCommonParts .. $] = other.parts[numCommonParts .. $];
         }
+
+        result.numSetBits = result.countSetBits();
 
         return result;
     }
@@ -2404,14 +2409,14 @@ struct NaturalNumberSet
 
     @property size_t size() const pure nothrow @safe @nogc
     {
-        import core.bitop : getNumSetBits = popcnt;
-
-        size_t numSetBits;
-
-        foreach (part; parts)
-            numSetBits += getNumSetBits(part);
-
         return numSetBits;
+    }
+
+    private size_t countSetBits() const pure nothrow @safe @nogc
+    {
+        import core.bitop : numSetBits = popcnt;
+
+        return parts.map!numSetBits.sum;
     }
 
     size_t minElement() const
@@ -2581,6 +2586,19 @@ unittest
             assert(!set.has(i));
         }
     }
+}
+
+unittest
+{
+    size_t[] bits = chain(
+        0UL.repeat(270),
+        only(4194304UL),
+        0UL.repeat(5),
+        only(131072UL),
+    ).array;
+    auto set = NaturalNumberSet(bits);
+
+    assert(equal(set.elements, [17302, 17681]));
 }
 
 /**
