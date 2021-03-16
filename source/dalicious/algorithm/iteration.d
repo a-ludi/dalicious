@@ -138,6 +138,90 @@ private struct SliceByImpl(alias pred, Array)
     }
 }
 
+
+/**
+    Create chains of items linked by `areChainable`. This similar to `sliceBy`
+    but `areChainable` does not have to be an equivalence relation.
+
+    Params:
+        areChainable  = Predicate for determining if two adjacent elements
+                        should be chained.
+        array         = An array to be sliced.
+
+    Returns: With a binary predicate, a range of slices is returned in which
+    predicate holds for every pair of adjacent elements in a given slice.
+*/
+auto chainBy(alias pred, Array)(Array array) pure nothrow
+        if (isDynamicArray!Array)
+{
+    return ChainByImpl!(pred, Array)(array);
+}
+
+///
+unittest
+{
+    import dalicious.math : absdiff;
+    import std.algorithm.comparison : equal;
+
+    // Chain elements that are not too far apart
+    auto data = [1, 2, 3, 2, 1, 8, 5, 6, 7];
+
+    auto r1 = data.chainBy!((a, b) => absdiff(a, b) <= 1);
+    assert(r1.equal([
+        data[0 .. 5],
+        data[5 .. 6],
+        data[6 .. 9],
+    ]));
+}
+
+private struct ChainByImpl(alias _areChainable, Array)
+        if (isDynamicArray!Array)
+{
+    private alias areChainable = binaryFun!_areChainable;
+
+    private Array _array;
+    private size_t sliceStart;
+    private size_t sliceEnd;
+
+    this(Array array)
+    {
+        this._array = array;
+
+        if (!empty)
+            popFront();
+    }
+
+    void popFront()
+    {
+        assert(!empty, "Attempting to popFront an empty ChainByImpl");
+
+        sliceStart = sliceEnd++;
+
+        if (empty)
+            return;
+
+        while (sliceEnd < _array.length && areChainable(_array[sliceEnd - 1], _array[sliceEnd]))
+            ++sliceEnd;
+    }
+
+    @property bool empty() const pure nothrow
+    {
+        return sliceStart >= _array.length;
+    }
+
+    @property auto front()
+    {
+        assert(!empty, "Attempting to fetch the front of an empty ChainByImpl");
+
+        return _array[sliceStart .. sliceEnd];
+    }
+
+    @property ChainByImpl!(_areChainable, Array) save() const pure nothrow
+    {
+        return cast(typeof(return)) this;
+    }
+}
+
 /// Return the prefix of `haystack` where `pred` is not satisfied.
 Array sliceUntil(alias pred = "a == b", Array, Needle)(
     Array haystack,
