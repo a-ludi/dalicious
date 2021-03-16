@@ -655,6 +655,46 @@ unittest
 }
 
 
+/// Convert to given type without errors by bounding values to target type
+/// limits.
+int compareIntegers(Int)(Int lhs, Int rhs) pure nothrow @safe @nogc if (isIntegral!Int)
+{
+    static if (isSigned!Int)
+    {
+        static if (Int.sizeof <= int.sizeof)
+            return cast(int) (lhs - rhs);
+        else
+            return boundedConvert!int(lhs - rhs);
+    }
+    else
+    {
+        static assert(isUnsigned!Int);
+
+        if (lhs >= rhs)
+            return boundedConvert!int(lhs - rhs);
+        else
+            return -1;
+    }
+}
+
+///
+unittest
+{
+    assert(compareIntegers( 1, 1) == 0);
+    assert(compareIntegers(-1, 1) < 0);
+    assert(compareIntegers( 1, -1) > 0);
+    assert(compareIntegers(int.min, int.min) == 0);
+}
+
+unittest
+{
+    assert(compareIntegers(0UL, 0UL) == 0);
+    assert(compareIntegers(0UL, ulong.max) < 0);
+    assert(compareIntegers(ulong.max, 0UL) > 0);
+    assert(compareIntegers(ulong.max, ulong.max) == 0);
+}
+
+
 class EdgeExistsException : Exception
 {
     pure nothrow @nogc @safe this(
