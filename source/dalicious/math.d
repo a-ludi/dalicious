@@ -2362,62 +2362,36 @@ struct NaturalNumberSet
         return false;
     }
 
-    @property size_t size() const pure nothrow
+    @property size_t size() const pure nothrow @safe @nogc
     {
+        import core.bitop : getNumSetBits = popcnt;
+
         size_t numSetBits;
 
-        foreach (i, part; parts)
-        {
-            size_t j = 0;
-
-            while ((part >> j) != emptyPart && j < partSize)
-            {
-                while (((part >> j) & firstBit) != firstBit)
-                    ++j;
-                ++numSetBits;
-                ++j;
-            }
-        }
+        foreach (part; parts)
+            numSetBits += getNumSetBits(part);
 
         return numSetBits;
     }
 
     size_t minElement() const
     {
+        import core.bitop : getLeastSignificantSetBit = bsf;
+
         foreach (i, part; parts)
-        {
             if (part != emptyPart)
-            {
-                size_t j = 0;
-
-                while (((part >> j) & firstBit) != firstBit)
-                {
-                    ++j;
-                }
-
-                return i * partSize + j;
-            }
-        }
+                return i * partSize + getLeastSignificantSetBit(part);
 
         throw new EmptySetException("empty set has no minElement");
     }
 
     size_t maxElement() const
     {
-        foreach (i, part; parts.retro.enumerate)
-        {
+        import core.bitop : getMostSignificantSetBit = bsr;
+
+        foreach_reverse (i, part; parts)
             if (part != emptyPart)
-            {
-                size_t j = 0;
-
-                while (((part << j) & lastBit) != lastBit)
-                {
-                    ++j;
-                }
-
-                return (parts.length - i - 1) * partSize + (partSize - j - 1);
-            }
-        }
+                return i * partSize + getMostSignificantSetBit(part);
 
         throw new EmptySetException("empty set has no maxElement");
     }
@@ -2438,96 +2412,53 @@ struct NaturalNumberSet
 
     /// Returns a range of the elements in this set. The elements are ordered
     /// ascending.
-    @property auto elements() const pure nothrow
+    @property auto elements() const pure nothrow @nogc
     {
+        import core.bitop : BitRange;
+
         static struct ElementsRange
         {
-            const NaturalNumberSet* set;
-            bool _empty = false;
-            size_t i = 0;
-            size_t part;
-            size_t j = 0;
+            private const size_t[] parts;
+            private BitRange impl;
+            alias impl this;
 
-            this(const NaturalNumberSet* set) pure nothrow
+
+            this(const size_t[] parts) pure nothrow @nogc
             {
-                this.set = set;
-                this._empty = set.empty;
-
-                if (!this.empty)
-                {
-                    this.part = set.parts[i];
-                    if (!set.has(front))
-                    {
-                        popFront();
-                    }
-                }
+                this.parts = parts;
+                this.impl = BitRange(parts.ptr, parts.length * partSize);
             }
 
-            @property ElementsRange save() const pure nothrow
+
+            void popFront() pure nothrow @nogc
             {
-                return this;
+                assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+                impl.popFront();
             }
 
-            void popFront() pure nothrow
+
+            @property size_t front() pure nothrow @safe @nogc
             {
-                assert(!empty, "Attempting to popFront an empty elements range");
-                ++j;
+                assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
 
-                while (shiftedPartEmpty)
-                {
-                    nextPart();
-
-                    if (empty)
-                    {
-                        return;
-                    }
-                }
-
-                while (((part >> j) & firstBit) != firstBit && !shiftedPartEmpty)
-                {
-                    ++j;
-                }
-
-                if (shiftedPartEmpty)
-                {
-                    popFront();
-                }
+                return impl.front;
             }
 
-            @property size_t front() const pure nothrow
+
+            @property bool empty() const pure nothrow @safe @nogc
             {
-                assert(!empty, "Attempting to fetch the front of an empty elements range");
-                return i * partSize + j;
+                return impl.empty;
             }
 
-            @property bool empty() const pure nothrow
-            {
-                return _empty;
-            }
 
-            private @property bool shiftedPartEmpty() const pure nothrow
+            @property ElementsRange save() const pure nothrow @nogc
             {
-                return (part >> j) == emptyPart || j >= partSize;
-            }
-
-            private void nextPart() pure nothrow
-            {
-                // move to start of next part
-                ++i;
-                j = 0;
-
-                if (i < set.parts.length)
-                {
-                    part = set.parts[i];
-                }
-                else
-                {
-                    _empty = true;
-                }
+                return ElementsRange(parts);
             }
         }
 
-        return ElementsRange(&this);
+        return ElementsRange(parts);
     }
 
     ///
