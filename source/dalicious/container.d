@@ -28,8 +28,6 @@ public:
 
     static if (staticBufferSize == size_t.max)
     {
-        @disable this();
-
         this(size_t bufferSize) pure nothrow @safe
         {
             this._buffer = new T[bufferSize];
@@ -183,11 +181,6 @@ unittest
     alias Element = int;
     alias DyanmicRB = RingBuffer!Element;
     alias StaticRB = RingBuffer!(Element, 10);
-
-    enum isDefaultConstructible(T) = is(typeof(T()));
-
-    static assert(!isDefaultConstructible!DyanmicRB);
-    static assert(isDefaultConstructible!StaticRB);
 
     static foreach (alias RB; AliasSeq!(DyanmicRB, StaticRB))
     {
