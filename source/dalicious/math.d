@@ -2174,7 +2174,7 @@ struct UndirectedGraph(Node, Weight = void)
 
 class EmptySetException : Exception
 {
-    this(string msg)
+    this(string msg) pure nothrow @safe @nogc
     {
         super(msg);
     }
@@ -2191,7 +2191,7 @@ struct NaturalNumberSet
     private size_t[] parts;
     private size_t numSetBits;
 
-    this(size_t initialNumElements, Flag!"addAll" addAll = No.addAll)
+    this(size_t initialNumElements, Flag!"addAll" addAll = No.addAll) pure nothrow @safe
     {
         reserveFor(initialNumElements);
 
@@ -2205,7 +2205,7 @@ struct NaturalNumberSet
         }
     }
 
-    static NaturalNumberSet create(size_t[] initialElements...)
+    static NaturalNumberSet create(size_t[] initialElements...) pure nothrow @safe
     {
         if (initialElements.length == 0)
             return NaturalNumberSet();
@@ -2273,55 +2273,54 @@ struct NaturalNumberSet
         return n ^ fullPart;
     }
 
-    void add(in size_t n) pure nothrow
+    void add(in size_t n) pure nothrow @trusted
     {
         import core.bitop : testSetBit = bts;
 
         reserveFor(n);
 
-        if (testSetBit(parts.ptr, n) == 0)
+        if (testSetBit(&parts[0], n) == 0)
             ++numSetBits;
     }
 
-    void remove(in size_t n)
+    void remove(in size_t n) pure nothrow @trusted @nogc
     {
         import core.bitop : testResetBit = btr;
 
         if (!inBounds(n))
             return;
 
-        if (testResetBit(parts.ptr, n) != 0)
+        if (testResetBit(&parts[0], n) != 0)
             --numSetBits;
     }
 
-    bool has(in size_t n) const pure nothrow @nogc
+    bool has(in size_t n) const pure nothrow @trusted @nogc
     {
         import core.bitop : testBit = bt;
 
         if (!inBounds(n))
             return false;
 
-        return testBit(parts.ptr, n) != 0;
+        return testBit(&parts[0], n) != 0;
     }
 
-    bool opBinaryRight(string op)(in size_t n) const pure nothrow if (op == "in")
+    bool opBinaryRight(string op)(in size_t n) const pure nothrow @trusted @nogc if (op == "in")
     {
         return this.has(n);
     }
 
-    bool empty() const pure nothrow
+    bool empty() const pure nothrow @safe @nogc
     {
         return parts.all!(part => part == emptyPart);
     }
 
-    void clear() pure nothrow
+    void clear() pure nothrow @safe @nogc
     {
-        foreach (ref part; parts)
-            part = emptyPart;
+        parts[] = emptyPart;
         numSetBits = 0;
     }
 
-    bool opBinary(string op)(in NaturalNumberSet other) const pure nothrow if (op == "==")
+    bool opBinary(string op)(in NaturalNumberSet other) const pure nothrow @safe @nogc if (op == "==")
     {
         auto numCommonParts = min(this.parts.length, other.parts.length);
 
@@ -2348,7 +2347,7 @@ struct NaturalNumberSet
         return true;
     }
 
-    bool opBinary(string op)(in NaturalNumberSet other) const pure nothrow if (op == "in")
+    bool opBinary(string op)(in NaturalNumberSet other) const pure nothrow @safe @nogc if (op == "in")
     {
         auto numCommonParts = min(this.parts.length, other.parts.length);
 
@@ -2371,7 +2370,7 @@ struct NaturalNumberSet
         return true;
     }
 
-    NaturalNumberSet opBinary(string op)(in NaturalNumberSet other) const pure nothrow if (op.among("|", "^", "&"))
+    NaturalNumberSet opBinary(string op)(in NaturalNumberSet other) const pure nothrow @safe @nogc if (op.among("|", "^", "&"))
     {
         NaturalNumberSet result;
         result.parts.length = max(this.parts.length, other.parts.length);
@@ -2394,7 +2393,7 @@ struct NaturalNumberSet
         return result;
     }
 
-    bool intersects(in NaturalNumberSet other) const pure nothrow
+    bool intersects(in NaturalNumberSet other) const pure nothrow @safe @nogc
     {
         auto numCommonParts = min(this.parts.length, other.parts.length);
 
@@ -2419,7 +2418,7 @@ struct NaturalNumberSet
         return parts.map!numSetBits.sum;
     }
 
-    size_t minElement() const
+    size_t minElement() const pure @safe
     {
         import core.bitop : getLeastSignificantSetBit = bsf;
 
@@ -2430,7 +2429,7 @@ struct NaturalNumberSet
         throw new EmptySetException("empty set has no minElement");
     }
 
-    size_t maxElement() const
+    size_t maxElement() const pure @safe
     {
         import core.bitop : getMostSignificantSetBit = bsr;
 
@@ -2457,7 +2456,7 @@ struct NaturalNumberSet
 
     /// Returns a range of the elements in this set. The elements are ordered
     /// ascending.
-    @property auto elements() const pure nothrow @nogc
+    @property auto elements() const pure nothrow @safe @nogc
     {
         import core.bitop : BitRange;
 
@@ -2468,14 +2467,14 @@ struct NaturalNumberSet
             alias impl this;
 
 
-            this(const size_t[] parts) pure nothrow @nogc
+            this(const size_t[] parts) pure nothrow @trusted @nogc
             {
                 this.parts = parts;
-                this.impl = BitRange(parts.ptr, parts.length * partSize);
+                this.impl = BitRange(&parts[0], parts.length * partSize);
             }
 
 
-            void popFront() pure nothrow @nogc
+            void popFront() pure nothrow @trusted @nogc
             {
                 assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
 
@@ -2497,7 +2496,7 @@ struct NaturalNumberSet
             }
 
 
-            @property ElementsRange save() const pure nothrow @nogc
+            @property ElementsRange save() const pure nothrow @safe @nogc
             {
                 return ElementsRange(parts);
             }
