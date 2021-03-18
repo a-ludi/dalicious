@@ -2283,6 +2283,17 @@ struct NaturalNumberSet
             ++numSetBits;
     }
 
+    alias put = add;
+
+    unittest
+    {
+        NaturalNumberSet set;
+
+        iota(16).copy(&set);
+
+        assert(equal(set.elements, iota(16)));
+    }
+
     void remove(in size_t n) pure nothrow @trusted @nogc
     {
         import core.bitop : testResetBit = btr;
@@ -2546,6 +2557,8 @@ struct NaturalNumberSet
         return format("[%(%d,%)]", this.elements);
     }
 }
+
+static assert(isOutputRange!(NaturalNumberSet, size_t));
 
 unittest
 {
