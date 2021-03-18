@@ -8,13 +8,14 @@
 */
 module dalicious.log;
 
+import core.thread;
+import dalicious.traits;
 import std.array;
 import std.datetime;
 import std.format;
 import std.process;
 import std.range;
 import std.stdio;
-import core.thread;
 
 private
 {
@@ -39,7 +40,9 @@ bool shouldLog(LogLevel level)
 }
 
 /**
-    Logs a message in JSON format.
+    Logs a message in JSON format. If the `name` part is `null` the field
+    will not be included into the Json.
+
     Params:
         args = pairs of `name` (`string`) and `value`
 */
@@ -95,7 +98,8 @@ void logJson(T...)(LogLevel level, lazy T args) nothrow
         json[threadKey] = thisThreadID;
 
         foreach (keyValuePair; args.chunks!2)
-            json[keyValuePair[0]] = serializeToJson(keyValuePair[1]);
+            if (keyValuePair[0] !is null)
+                json[keyValuePair[0]] = serializeToJson(keyValuePair[1]);
 
         return log(level, json.to!string);
     }
