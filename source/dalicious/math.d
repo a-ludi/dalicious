@@ -2381,27 +2381,31 @@ struct NaturalNumberSet
         return true;
     }
 
-    NaturalNumberSet opBinary(string op)(in NaturalNumberSet other) const pure nothrow @safe @nogc if (op.among("|", "^", "&"))
+    NaturalNumberSet opBinary(string op)(in NaturalNumberSet other) const pure nothrow @safe if (op.among("|", "^", "&"))
     {
-        NaturalNumberSet result;
-        result.parts.length = max(this.parts.length, other.parts.length);
+        auto result = this;
 
-        auto numCommonParts = min(this.parts.length, other.parts.length);
-
-        foreach (i; 0 .. numCommonParts)
-            result.parts[i] = mixin("this.parts[i] " ~ op ~ " other.parts[i]");
-
-        static if (op.among("|", "^"))
-        {
-            if (this.parts.length > numCommonParts)
-                result.parts[numCommonParts .. $] = this.parts[numCommonParts .. $];
-            if (other.parts.length > numCommonParts)
-                result.parts[numCommonParts .. $] = other.parts[numCommonParts .. $];
-        }
-
-        result.numSetBits = result.countSetBits();
+        mixin("result " ~ op ~ "= other;");
 
         return result;
+    }
+
+    NaturalNumberSet opOpAssign(string op)(in NaturalNumberSet other) pure nothrow @safe if (op.among("|", "^", "&"))
+    {
+        auto numCommonParts = min(this.parts.length, other.parts.length);
+        if (this.parts.length < other.parts.length)
+            this.parts.length = other.parts.length;
+
+        foreach (i; 0 .. numCommonParts)
+            mixin("this.parts[i] " ~ op ~ "= other.parts[i];");
+
+        static if (op.among("|", "^"))
+            if (other.parts.length > numCommonParts)
+                this.parts[numCommonParts .. $] = other.parts[numCommonParts .. $];
+
+        this.numSetBits = this.countSetBits();
+
+        return this;
     }
 
     bool intersects(in NaturalNumberSet other) const pure nothrow @safe @nogc
