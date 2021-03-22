@@ -126,9 +126,6 @@ public:
         front = value;
     }
 
-    alias put = pushFront;
-
-
     void pushBack(T value) pure nothrow @safe @nogc
     {
         assert(bufferSize > 0, "Attempting to pushBack an zero-sized RingBuffer");
@@ -142,6 +139,8 @@ public:
 
         back = value;
     }
+
+    alias put = pushBack;
 
 
     private size_t indexOf(ptrdiff_t ptr) const pure nothrow @safe @nogc
@@ -286,6 +285,38 @@ unittest
     assert(buffer.front == 5);
     assert(buffer.back == 1);
     assert(equal(buffer, [5, 4, 3, 2, 1]));
+}
+
+/// The buffer can be used as an output range.
+unittest
+{
+    import std.algorithm;
+    import std.range;
+
+    auto buffer = RingBuffer!int(32);
+
+    iota(8).copy(&buffer);
+
+    assert(buffer.front == 0);
+    buffer.popFront();
+
+    assert(buffer.front == 1);
+    buffer.popFront();
+
+    assert(equal(buffer, iota(2, 8)));
+}
+
+unittest
+{
+    import std.algorithm;
+    import std.range;
+
+    auto buffer = RingBuffer!int(32);
+
+    auto filledBuffer = iota(8).copy(buffer);
+
+    assert(!equal(buffer, filledBuffer));
+    assert(equal(filledBuffer, iota(8)));
 }
 
 unittest

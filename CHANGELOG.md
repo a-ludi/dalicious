@@ -13,6 +13,8 @@ and this project adheres to
 
 ### Fixed
 - Compiler error due to non-constant `case` value
+- Fixed output range behavior of `RingBuffer`: `put` should add elements to the
+  back of the range so the buffer can be read by regular iteration.
 
 
 ## [3.1.0] - 2020-02-27
