@@ -2485,7 +2485,7 @@ struct NaturalNumberSet
             this(const size_t[] parts) pure nothrow @trusted @nogc
             {
                 this.parts = parts;
-                this.impl = BitRange(&parts[0], parts.length * partSize);
+                this.impl = BitRange(parts.length > 0?  &parts[0] : null, parts.length * partSize);
             }
 
 
