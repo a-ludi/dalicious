@@ -10,6 +10,7 @@ and this project adheres to
 ## [unreleased]
 ### Added
 - Encode/decode a pair of integers in a single integer.
+- Added alias `capacity = bufferSize` to `RingBuffer`
 
 ### Fixed
 - Compiler error due to non-constant `case` value

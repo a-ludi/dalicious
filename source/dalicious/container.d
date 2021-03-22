@@ -43,6 +43,8 @@ public:
             return _buffer.length;
         }
 
+    alias capacity = bufferSize;
+
 
     @property RingBuffer!(T, staticBufferSize) save() const pure nothrow @trusted @nogc
     {
