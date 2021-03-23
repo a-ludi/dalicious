@@ -2477,14 +2477,14 @@ struct NaturalNumberSet
 
         static struct ElementsRange
         {
-            private const size_t[] parts;
+            private const(size_t)[] parts;
             private BitRange impl;
             alias impl this;
 
 
             this(const size_t[] parts) pure nothrow @trusted @nogc
             {
-                this.parts = parts;
+                this.parts = parts[];
                 this.impl = BitRange(parts.length > 0?  &parts[0] : null, parts.length * partSize);
             }
 
