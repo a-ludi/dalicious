@@ -3,6 +3,6 @@
 	"versions": {
 		"stdx-allocator": "2.77.5",
 		"string-transform-d": "1.0.0",
-		"vibe-d": "0.8.5"
+		"vibe-d": "0.9.3"
 	}
 }
