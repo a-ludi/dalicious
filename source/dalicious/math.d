@@ -3982,6 +3982,11 @@ Histogram!T histogram(R, T = ElementType!R)(T histMin, T histMax, T binSize, R v
     return hist;
 }
 
+Histogram!T histogram(R, T = ElementType!R)(R values, T histMin, T histMax, T binSize) if (isInputRange!R)
+{
+    return histogram(histMin, histMax, binSize, values);
+}
+
 /// ditto
 Histogram!T histogram(T)(T histMin, T histMax, T binSize)
 {
@@ -3996,6 +4001,12 @@ Histogram!(T, Yes.logIndex) logHistogram(R, T = ElementType!R)(T histMin, T hist
     hist.insert(values);
 
     return hist;
+}
+
+/// ditto
+Histogram!(T, Yes.logIndex) logHistogram(R, T = ElementType!R)(R values, T histMin, T histMax, size_t indexBase) if (isInputRange!R)
+{
+    return logHistogram(histMin, histMax, indexBase, values);
 }
 
 /// ditto
