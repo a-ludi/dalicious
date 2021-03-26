@@ -233,7 +233,7 @@ unittest {
         0.53,
         0.85,
         0.95,
-    ).equal!approxEqual([
+    ).equal!((a, b) => isClose(a, b, 0.01, 1e-5))([
         0.322757,
         0.490688,
         0.490688,
@@ -4034,11 +4034,11 @@ unittest
     ]);
 
     assert(h.totalCount == 50);
-    assert(approxEqual(h.minValue, -1.96634));
-    assert(approxEqual(h.maxValue, 2.26336));
-    assert(approxEqual(h.sum, 10.3936));
-    assert(approxEqual(h.mean, 0.2079));
-    assert(approxEqual(h.percentile(0.5), 0.1429));
+    assert(isClose(h.minValue, -1.96634, 0.01, 1e-5));
+    assert(isClose(h.maxValue, 2.26336, 0.01, 1e-5));
+    assert(isClose(h.sum, 10.3936, 0.01, 1e-5));
+    assert(isClose(h.mean, 0.2079, 0.01, 1e-5));
+    assert(isClose(h.percentile(0.5), 0.1429, 0.01, 1e-5));
 
     enum inf = double.infinity;
     auto expectedHist = [
@@ -4056,8 +4056,8 @@ unittest
 
     foreach (idx, coord, double density; h)
     {
-        assert(approxEqual(expectedHist[idx][0], coord));
-        assert(approxEqual(expectedHist[idx][1], density));
+        assert(isClose(expectedHist[idx][0], coord, 0.01, 1e-5));
+        assert(isClose(expectedHist[idx][1], density, 0.01, 1e-5));
     }
 }
 
@@ -4076,8 +4076,8 @@ unittest
     assert(h.minValue == 0);
     assert(h.maxValue == 49);
     assert(h.sum == 465);
-    assert(approxEqual(h.mean, 9.3));
-    assert(approxEqual(h.percentile(0.5), 4.5));
+    assert(isClose(h.mean, 9.3, 0.01, 1e-5));
+    assert(isClose(h.percentile(0.5), 4.5, 0.01, 1e-5));
 
     auto expectedHist = [
         [ 0, 0.120],
@@ -4099,8 +4099,8 @@ unittest
 
     foreach (idx, coord, double density; h)
     {
-        assert(approxEqual(expectedHist[idx][0], coord));
-        assert(approxEqual(expectedHist[idx][1], density));
+        assert(isClose(expectedHist[idx][0], coord, 0.01, 1e-5));
+        assert(isClose(expectedHist[idx][1], density, 0.01, 1e-5));
     }
 }
 
@@ -4117,8 +4117,8 @@ unittest
     assert(h.minValue == 0);
     assert(h.maxValue == 49);
     assert(h.sum == 465);
-    assert(approxEqual(h.mean, 9.3));
-    assert(approxEqual(h.percentile(0.5), 4.5));
+    assert(isClose(h.mean, 9.3, 0.01, 1e-5));
+    assert(isClose(h.percentile(0.5), 4.5, 0.01, 1e-5));
 
     assert(equal(h.counts.map!"a.count", [
         6, 7, 7, 4, 2, 4, 0, 3, 0, 2, 1, 0, 0, 2, 1, 0, 1, 3, 0, 0, 0, 0, 0,
