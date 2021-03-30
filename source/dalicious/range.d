@@ -13,12 +13,14 @@ import std.functional : unaryFun;
 import std.meta : AliasSeq, staticMap;
 import std.range :
     chain,
+    ElementEncodingType,
     ElementType,
     hasLength,
     hasSlicing,
     iota,
     isInputRange;
-import std.traits : rvalueOf;
+import std.range.primitives;
+import std.traits : isSomeChar, rvalueOf;
 import std.typecons : tuple, Tuple;
 
 /**
@@ -426,4 +428,93 @@ unittest
         tupleMap!(x => to!string(x))(1, '2', 3.0) ==
         tuple("1", "2", "3")
     );
+}
+
+
+/// Wraps given input range and keeps track of the line number and column.
+auto trackLineLocation(R)(R input, size_t line = 1, size_t column = 1) pure nothrow @safe @nogc
+    if (isInputRange!R && isSomeChar!(ElementEncodingType!R))
+{
+    static struct LineLocationTracker
+    {
+        R input;
+        size_t line;
+        size_t column;
+
+
+        void popFront()
+        {
+            assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+            if (front == '\n')
+            {
+                ++line;
+                column = 0;
+            }
+
+            ++column;
+            input.popFront();
+        }
+
+
+        @property auto front()
+        {
+            assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+            return input.front;
+        }
+
+
+        @property bool empty()
+        {
+            return input.empty;
+        }
+
+
+        static if (hasLength!R)
+            @property auto length()
+            {
+                return input.length;
+            }
+    }
+
+    return LineLocationTracker(input, line, column);
+}
+
+///
+unittest
+{
+    import std.array;
+    import std.range;
+
+    enum testDocLines = [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+    ];
+    auto testDoc = testDocLines.join('\n') ~ '\n';
+
+    auto tracker = trackLineLocation(refRange(&testDoc));
+    // default tracker starts at line 1 column 1
+    assert(tracker.line == 1);
+    assert(tracker.column == 1);
+
+    // read to end of first line
+    tracker.popFrontExactly(testDocLines[0].length);
+    // still on first line but column changed to last column in the line
+    // which is the newline itself
+    assert(tracker.line == 1);
+    assert(tracker.column == testDocLines[0].length + 1);
+
+    // pop the newline
+    tracker.popFront();
+    // now we are on line 2 column 1
+    assert(tracker.line == 2);
+    assert(tracker.column == 1);
+
+    // read until the end
+    tracker.popFrontN(testDoc.length);
+    assert(tracker.line == 5);
+    assert(tracker.column == 1);
 }
