@@ -16,7 +16,11 @@ import std.algorithm :
     uniq;
 import std.conv : to;
 import std.functional : binaryFun, unaryFun;
-import std.traits : isDynamicArray;
+import std.traits :
+    isCallable,
+    isDynamicArray,
+    ReturnType,
+    rvalueOf;
 import std.typecons : Yes;
 import std.range.primitives;
 
@@ -78,18 +82,43 @@ template staticPredSwitch(T...)
     auto staticPredSwitch(E)(E switchExpression) pure nothrow
     {
         static assert (T.length > 0, "missing choices");
-        static assert (T.length % 2 == 1, "missing default clause");
+        enum hasDefaultClause = T.length % 2 == 1;
 
         static foreach (i; 0 .. T.length - 1)
         {
             static if (i % 2 == 0)
             {
                 if (switchExpression == T[i])
-                    return T[i + 1];
+                {
+                    static if (isCallable!(T[i + 1]))
+                        return T[i + 1]();
+                    else
+                        return T[i + 1];
+                }
             }
         }
 
-        return T[$ - 1];
+        static if (hasDefaultClause)
+        {
+            static if (isCallable!(T[$ - 1]))
+            {
+                static if (is(ReturnType!(T[$ - 1]) == void))
+                {
+                    T[$ - 1]();
+                    assert(0);
+                }
+                else
+                    return T[$ - 1]();
+            }
+            else
+            {
+                return T[$ - 1];
+            }
+        }
+        else
+        {
+            assert(0, "none of the clauses matched in " ~ __FUNCTION__);
+        }
     }
 }
 
