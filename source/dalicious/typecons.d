@@ -478,3 +478,48 @@ unittest
 {
     BoundedArray!(int, 3) triggerUnitTests;
 }
+
+
+/// Create a tuple of `variables` using their native names. Mostly works with
+/// symbols but not with values (see example).
+auto tupleOf(variables...)()
+{
+    import std.meta;
+    import std.typecons;
+
+    enum symbolName(alias sym) = sym.stringof;
+    alias variableNames = staticMap!(symbolName, variables);
+
+    return tuple!(variableNames)(variables);
+}
+
+///
+unittest
+{
+    import std.typecons;
+
+    auto a = 1;
+    auto b = false;
+    auto c = "foobar";
+    auto tup = tupleOf!(a, b, c);
+
+    assert(tup == tuple!("a", "b", "c")(a, b, c));
+}
+
+
+
+/// Does not work with values.
+unittest
+{
+    import std.typecons;
+
+    auto a = 1;
+    auto b = false;
+
+    static assert(!is(tupleOf!(a, b, 42)));
+    // compiler error:
+    //     std.typecons.Tuple!(int, "a", bool, "b", int, "42")` does not match
+    //     template declaration `Tuple(Specs...)`
+}
+
+
