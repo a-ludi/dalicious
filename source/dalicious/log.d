@@ -29,12 +29,12 @@ void setLogLevel(LogLevel level) nothrow
         minLevel = level;
 }
 
-LogLevel getLogLevel()
+LogLevel getLogLevel() nothrow @nogc
 {
     return minLevel;
 }
 
-bool shouldLog(LogLevel level)
+bool shouldLog(LogLevel level) nothrow @nogc
 {
     return level >= minLevel;
 }
