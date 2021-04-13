@@ -10,12 +10,15 @@ module dalicious.log;
 
 import core.thread;
 import dalicious.traits;
+import std.algorithm;
 import std.array;
-import std.datetime;
+import std.datetime.stopwatch;
 import std.format;
 import std.process;
 import std.range;
 import std.stdio;
+import std.traits;
+import std.typecons;
 
 private
 {
@@ -307,6 +310,347 @@ unittest
     assert(matchFirst(observed2["function"].to!string, functionFQN));
 }
 
+
 /// Create a new todo. A todo list will be generated on end of compilation.
 debug enum todo(string task, string file = __FILE__, size_t line = __LINE__) =
     "[TODO] " ~ task ~ " at " ~ file ~ ":" ~ line.stringof;
+
+
+/// Track progress over time on text-based output device.
+class ProgressMeter
+{
+    alias UnitSpec = Tuple!(size_t, "multiplier", char, "name");
+
+
+    /// Display unit for the progress meter.
+    enum Unit : UnitSpec
+    {
+        /// Automitcally select apropriate unit.α
+        ///
+        /// See_also: selectUnitFor
+        auto_ = UnitSpec(0, '\0'),
+
+        /// Display raw counts.
+        one = UnitSpec(1, ' '),
+
+        /// Display counts in units of `10^3`.
+        kilo = UnitSpec(10^^3, 'k'),
+
+        /// Display counts in units of `10^6`.
+        mega = UnitSpec(10^^6, 'M'),
+
+        /// Display counts in units of `10^9`.
+        giga = UnitSpec(10^^9, 'G'),
+
+        /// Display counts in units of `10^12`.
+        peta = UnitSpec(10^^12, 'P'),
+
+        /// Alias for `one`.
+        min = one,
+
+        /// Alias for `peta`.
+        max = peta,
+    }
+
+
+    /// Display format for the progress meter.
+    enum Format : ubyte
+    {
+        /// Print an self-updating status line. This is meant for display on a
+        /// terminal. For output into a file `json` should be preferred.
+        human,
+        /// Print a series of JSON objects. This is meant for output into a
+        /// file. For output to a terminal `human` should be preferred.
+        ///
+        /// Example output:
+        ///
+        /// ```json
+        /// {"ticks":41,"elapsedSecs":20.000,"ticksPerSec":2.050,"etaSecs":88.15}
+        /// {"ticks":42,"elapsedSecs":21.000,"ticksPerSec":2.000,"etaSecs":84.00}
+        /// {"ticks":43,"elapsedSecs":22.000,"ticksPerSec":1.955,"etaSecs":80.16}
+        /// ```
+        json,
+    }
+
+
+    /// Set this to the total number of ticks if known.
+    size_t totalTicks;
+
+    /// Print a progress update at most this frequently. Progress lines are
+    /// only ever printed on `start`, `stop`, `tick` and `updateNumTicks`.
+    size_t printEveryMsecs = 500;
+
+    /// Select output format.
+    ///
+    /// See_also: Format
+    Format format;
+
+    /// Suppress all output but still keep track of things.
+    Flag!"silent" silent;
+
+    /// Display unit for format `human`.
+    Unit unit;
+
+    /// Number of digits of decimal fractions.
+    size_t precision = 3;
+
+    /// Current number of ticks. Automatically updates the status when the
+    /// timer is running.
+    ///
+    /// See_also: updateNumTicks
+    @property size_t numTicks() const pure nothrow @safe @nogc
+    {
+        return _numTicks;
+    }
+
+    /// ditto
+    @property void numTicks(size_t value)
+    {
+        updateNumTicks(value);
+    }
+
+    protected size_t _numTicks;
+    protected File _output;
+    protected bool hasOutput;
+    protected StopWatch timer;
+    protected StopWatch lastPrint;
+
+
+    ~this()
+    {
+        if(isRunning())
+            stop();
+    }
+
+
+    /// Get/set the output file.
+    @property void output(File output)
+    in (!isRunning)
+    {
+        hasOutput = true;
+        _output = output;
+    }
+
+
+    /// ditto
+    @property auto ref File output()
+    {
+        if (!hasOutput)
+            output = stderr;
+
+        return _output;
+    }
+
+
+    /// Start the timer. Print the first status line if format is `human`.
+    void start()
+    in (!isRunning, "Attempting to start() a running ProgressMeter.")
+    {
+        numTicks = 0;
+        if (!silent)
+        {
+            lastPrint.reset();
+            lastPrint.start();
+            printProgressLine(LineLocation.first);
+        }
+        timer.reset();
+        timer.start();
+    }
+
+
+    /// Advance the number of ticks. Prints a status line when at least
+    /// `printEveryMsecs` milliseconds have passed since the last print.
+    void tick(size_t newTicks = 1)
+    in (isRunning, "Attempting to tick() a stopped ProgressMeter.")
+    {
+        updateNumTicks(numTicks + newTicks);
+    }
+
+
+    /// Set the number of ticks. Prints a status line when at least
+    /// `printEveryMsecs` milliseconds have passed since the last print.
+    void updateNumTicks(size_t numTicks)
+    in (isRunning, "Attempting to update numTicks of a stopped ProgressMeter.")
+    {
+        this.numTicks = numTicks;
+
+        if (!silent && lastPrint.peek.total!"msecs" > printEveryMsecs)
+            printProgressLine(LineLocation.middle);
+    }
+
+
+    /// Stop the timer. Prints a final status line.
+    void stop()
+    in (isRunning, "Attempting to stop() a stopped ProgressMeter.")
+    {
+        timer.stop();
+
+        if (!silent)
+            printProgressLine(LineLocation.last);
+    }
+
+
+    /// Returns true if the timer is running.
+    @property bool isRunning() const pure nothrow @safe @nogc
+    {
+        return timer.running();
+    }
+
+
+    ///
+    static enum isValidTimeUnit(string timeUnit) = is(typeof(timer.peek.total!timeUnit));
+    static assert(isValidTimeUnit!"msecs");
+
+
+    ///
+    @property auto elapsed(string timeUnit)() const nothrow @safe if (isValidTimeUnit!timeUnit)
+    {
+        return timer.peek.total!timeUnit;
+    }
+
+
+    ///
+    @property auto ticksPer(string timeUnit)() const nothrow @safe if (isValidTimeUnit!timeUnit)
+    {
+        return cast(double) numTicks / elapsed!timeUnit;
+    }
+
+
+    /// Returns true when `eta` is defined.
+    @property auto hasETA() const nothrow @safe
+    {
+        return totalTicks > 0 && numTicks > 0;
+    }
+
+    /// ditto
+    alias hasEstimatedTimeOfArrival = hasETA;
+
+
+    /// Compute estimated time of arrival (ETA) with a simple linear model.
+    ///
+    /// ```d
+    /// const eta = (totalTicks - numTicks)/ticksPer!timeUnit;
+    /// ```
+    ///
+    /// Returns:  Estimated time of arrival id `hasETA`; otherwise `double.nan`.
+    @property double eta(string timeUnit)() const nothrow @safe if (isValidTimeUnit!timeUnit)
+    {
+        return hasETA?  (totalTicks - numTicks)/ticksPer!timeUnit : double.nan;
+    }
+
+    /// ditto
+    alias estimatedTimeOfArrival = eta;
+
+
+    /// Select unit such that number can be displayed with three leading
+    /// decimal digits.
+    static Unit selectUnitFor(size_t number) pure nothrow @safe
+    {
+        foreach (unit; EnumMembers!Unit)
+            if (unit.multiplier > 0 && number / unit.multiplier < 1000)
+                return unit;
+        return Unit.max;
+    }
+
+
+protected:
+
+
+    enum LineLocation : ubyte
+    {
+        first,
+        middle,
+        last,
+    }
+
+
+    void printProgressLine(LineLocation lineLocation)
+    {
+        final switch (format)
+        {
+            case Format.human:
+                printHumanProgressLine(lineLocation);
+                break;
+            case Format.json:
+                printJsonProgressLine(lineLocation);
+                break;
+        }
+
+        lastPrint.reset();
+    }
+
+
+    void printHumanProgressLine(LineLocation lineLocation)
+    {
+        enum progressFormat = "\rrecords: %04.*f%c  elapsed: %04.*f sec  rate: %04.*f records/sec";
+        enum progressFormatWithTotal = "\rrecords: %04.*f/%04.*f%c (%04.2f%%) eta: %04.*f sec  elapsed: %04.*f sec  rate: %04.*f records/sec";
+        auto elapsedSecs = timer.peek.total!"msecs" * 1e-3;
+
+        auto unit = this.unit == Unit.auto_
+            ? selectUnitFor(max(numTicks, totalTicks))
+            : this.unit;
+
+        if (!hasETA)
+            output.writef!progressFormat(
+                precision,
+                cast(double) numTicks / unit.multiplier,
+                unit.name,
+                precision,
+                elapsedSecs,
+                precision,
+                cast(double) numTicks / elapsedSecs,
+            );
+        else
+            output.writef!progressFormatWithTotal(
+                precision,
+                cast(double) numTicks / unit.multiplier,
+                precision,
+                cast(double) totalTicks / unit.multiplier,
+                unit.name,
+                (100.0 * numTicks / totalTicks),
+                precision,
+                eta!"seconds",
+                precision,
+                elapsedSecs,
+                precision,
+                cast(double) numTicks / elapsedSecs,
+            );
+
+        final switch (lineLocation)
+        {
+            case LineLocation.first:
+            case LineLocation.middle:
+                output.flush();
+                break;
+            case LineLocation.last:
+                output.writeln();
+                break;
+        }
+    }
+
+
+    void printJsonProgressLine(LineLocation lineLocation)
+    {
+        enum formatPrefix = `{"ticks":%d,"elapsedSecs":%.*f,"ticksPerSec":%.*f`;
+        enum formatEta = `,"etaSecs":%.*f`;
+        enum formatSuffix = `}`;
+
+        if (lineLocation == LineLocation.first)
+            return;
+
+        const elapsedSecs = timer.peek.total!"msecs" * 1e-3;
+
+        output.writef!formatPrefix(
+            numTicks,
+            precision,
+            elapsedSecs,
+            precision,
+            cast(double) numTicks / elapsedSecs,
+        );
+
+        if (hasETA)
+            output.writef!formatEta(precision, eta!"seconds");
+
+        output.writefln!formatSuffix;
+    }
+}
