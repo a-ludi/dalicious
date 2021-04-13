@@ -8,16 +8,14 @@
 */
 module dalicious.algorithm.iteration;
 
-import std.algorithm :
-    copy,
-    countUntil,
-    min,
-    OpenRight,
-    uniq;
+import dalicious.range;
+import std.algorithm;
 import std.conv : to;
 import std.functional : binaryFun, unaryFun;
-import std.traits : isDynamicArray;
-import std.typecons : Yes;
+import std.meta;
+import std.traits;
+import std.typecons;
+import std.range;
 import std.range.primitives;
 
 
@@ -477,3 +475,156 @@ import std.algorithm : map;
 
 /// Cast elements to `const(char)`.
 alias charRange = map!"cast(const char) a";
+
+
+///
+struct Coiterator(alias cmp="a < b", Rs...)
+    if (allSatisfy!(isInputRange, Rs) && Rs.length >= 2 &&
+        is(CommonType!(ElementType, Rs)))
+{
+    alias E = CommonType!(ElementType, Rs);
+    alias lowerThan = binaryFun!cmp;
+
+    private Rs sources;
+    private ptrdiff_t frontIndex;
+
+
+    ///
+    this(Rs sources)
+    {
+        this.sources = sources;
+        this.frontIndex = 0;
+
+        if (!empty)
+            advanceSources();
+    }
+
+
+    ///
+    @property bool empty()
+    {
+        return frontIndex < 0 || only(sources).any!"a.empty";
+    }
+
+
+    ///
+    @property auto front()
+    {
+        assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+        return tupleMap!"a.front"(sources);
+    }
+
+    ///
+    void popFront()
+    {
+        static foreach (i; 0 .. sources.length)
+            popFrontSource(sources[i]);
+        advanceSources();
+    }
+
+
+    private void advanceSources()
+    {
+        if (frontSourceEmpty)
+        {
+            frontIndex = -1;
+            return;
+        }
+
+        bool allLinedUp;
+
+        while (!allLinedUp)
+        {
+            // assume they are lined up and proof the contrary
+            allLinedUp = true;
+            foreach (i, ref source; sources)
+            {
+                // disregard the current frontIndex
+                while (!source.empty && lowerThan(source.front, frontElement))
+                    popFrontSource(source);
+
+                if (source.empty)
+                {
+                    // end of co-iteration
+                    frontIndex = -1;
+
+                    return;
+                }
+                else if (lowerThan(frontElement, source.front))
+                {
+                    // source advanced beyond the sources[frontIndex]
+                    frontIndex = i;
+                    allLinedUp = false;
+                }
+            }
+        }
+    }
+
+
+    private void popFrontSource(R)(ref R source)
+    {
+        version (assert)
+            auto lastElement = source.front;
+
+        source.popFront();
+
+        version (assert)
+            assert(
+                source.empty || lowerThan(lastElement, source.front),
+                "sources must be strictly ascending",
+            );
+
+    }
+
+
+    private @property auto ref frontElement()
+    {
+        static foreach (i; 0 .. sources.length)
+            if (i == frontIndex)
+                return sources[i].front;
+        assert(0, "out of bounds");
+    }
+
+
+    private @property bool frontSourceEmpty()
+    {
+        static foreach (i; 0 .. sources.length)
+            if (i == frontIndex)
+                return sources[i].empty;
+        assert(0, "out of bounds");
+    }
+
+
+    ///
+    static if (allSatisfy!(isForwardRange, Rs))
+        @property auto save()
+        {
+            return typeof(this)(tupleMap!"a.save"(sources).expand);
+        }
+}
+
+
+///
+auto coiterate(alias cmp="a < b", Rs...)(Rs sources)
+    if (allSatisfy!(isInputRange, Rs) && Rs.length >= 2)
+{
+    return Coiterator!(cmp, Rs)(sources);
+}
+
+///
+unittest
+{
+    assert(equal(
+        coiterate(
+            [1, 2, 3, 4, 5],
+            [   2, 3, 4, 5, 6],
+            [1,    3,    5],
+            [1, 2, 3, 4, 5, 6],
+        ),
+        [
+            tuple(3, 3, 3, 3),
+            tuple(5, 5, 5, 5),
+        ],
+    ));
+}
