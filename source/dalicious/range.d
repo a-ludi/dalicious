@@ -398,20 +398,15 @@ unittest
 }
 
 /// Return a tuple of `fun` applied to each value of `tuple`.
-auto tupleMap(alias fun, Types...)(in Types values)
+auto tupleMap(alias fun, Types...)(Types values)
 {
+    import std.format : format;
+
     alias mapper = unaryFun!fun;
-    alias MappedValue(V) = typeof(mapper(rvalueOf!V));
-    alias MappedTuple = Tuple!(staticMap!(MappedValue, Types));
 
-    MappedTuple mappedTuple;
+    enum makeTuple = format!`tuple(%-(mapper(values[%d])%|, %))`(iota(values.length));
 
-    static foreach (i; 0 .. Types.length)
-    {
-        mappedTuple[i] = mapper(values[i]);
-    }
-
-    return mappedTuple;
+    return mixin(makeTuple);
 }
 
 ///
