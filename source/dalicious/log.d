@@ -41,6 +41,13 @@ void setLogFile(File logFile)
 }
 
 
+/// Get the log file.
+File getLogFile() nothrow
+{
+    return logFile;
+}
+
+
 /// Sets the minimum log level to be printed.
 void setLogLevel(LogLevel level) nothrow
 {
