@@ -23,7 +23,23 @@ import std.typecons;
 private
 {
     __gshared LogLevel minLevel = LogLevel.info;
+    __gshared File logFile;
 }
+
+
+static this()
+{
+    setLogFile(stderr);
+}
+
+
+/// Sets the log file.
+void setLogFile(File logFile)
+{
+    synchronized
+        .logFile = logFile;
+}
+
 
 /// Sets the minimum log level to be printed.
 void setLogLevel(LogLevel level) nothrow
@@ -119,18 +135,15 @@ unittest
     import std.stdio : File, stderr;
     import vibe.data.json : Json, parseJsonString;
 
-    auto origStderr = stderr;
-    stderr = File.tmpfile();
+    auto logFile = File.tmpfile();
+    setLogFile(logFile);
     scope (exit)
-    {
-        stderr.close();
-        stderr = origStderr;
-    }
+        setLogFile(stderr);
 
     logJsonError("error", "mysterious observation", "secret", 42);
 
-    stderr.rewind();
-    auto observed = parseJsonString(stderr.readln);
+    logFile.rewind();
+    auto observed = parseJsonString(logFile.readln);
 
     assert(observed["thread"].type == Json.Type.int_);
     assert(observed["timestamp"].type == Json.Type.int_);
@@ -190,13 +203,12 @@ void log(T...)(LogLevel level, string fmt, lazy T args) nothrow
 
         if (level >= minLevel)
         {
-            File output = stderr;
-
-            synchronized if (output.isOpen)
-            {
-                output.writeln(txt.data);
-                output.flush();
-            }
+            synchronized
+                if (logFile.isOpen)
+                {
+                    logFile.writeln(txt.data);
+                    logFile.flush();
+                }
         }
     }
     catch (Exception e)
@@ -274,13 +286,10 @@ unittest
     import std.stdio : File, stderr;
     import vibe.data.json : Json, parseJsonString;
 
-    auto origStderr = stderr;
-    stderr = File.tmpfile();
+    auto logFile = File.tmpfile();
+    setLogFile(logFile);
     scope (exit)
-    {
-        stderr.close();
-        stderr = origStderr;
-    }
+        setLogFile(stderr);
 
     void doSomething()
     {
@@ -293,11 +302,11 @@ unittest
     }
 
     doSomething();
-    stderr.rewind();
+    logFile.rewind();
 
     enum functionFQN = ctRegex!`dalicious\.log\.__unittest_L[0-9]+_C[0-9]+\.doSomething`;
-    auto observed1 = parseJsonString(stderr.readln);
-    auto observed2 = parseJsonString(stderr.readln);
+    auto observed1 = parseJsonString(logFile.readln);
+    auto observed2 = parseJsonString(logFile.readln);
 
     assert(observed1["thread"].type == Json.Type.int_);
     assert(observed1["timestamp"].type == Json.Type.int_);
