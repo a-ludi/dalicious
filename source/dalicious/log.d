@@ -425,6 +425,24 @@ class ProgressMeter
     protected StopWatch lastPrint;
 
 
+    this(
+        size_t totalTicks = 0,
+        size_t printEveryMsecs = 500,
+        Format format = Format.human,
+        Flag!"silent" silent = No.silent,
+        Unit unit = Unit.auto_,
+        size_t precision = 3,
+    ) pure nothrow @safe @nogc
+    {
+        this.totalTicks = totalTicks;
+        this.printEveryMsecs = printEveryMsecs;
+        this.format = format;
+        this.silent = silent;
+        this.unit = unit;
+        this.precision = precision;
+    }
+
+
     ~this()
     {
         if(isRunning())
