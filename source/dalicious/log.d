@@ -480,7 +480,7 @@ class ProgressMeter
     void start()
     in (!isRunning, "Attempting to start() a running ProgressMeter.")
     {
-        numTicks = 0;
+        _numTicks = 0;
         if (!silent)
         {
             lastPrint.reset();
@@ -506,9 +506,9 @@ class ProgressMeter
     void updateNumTicks(size_t numTicks)
     in (isRunning, "Attempting to update numTicks of a stopped ProgressMeter.")
     {
-        this.numTicks = numTicks;
+        this._numTicks = numTicks;
 
-        if (!silent && lastPrint.peek.total!"msecs" > printEveryMsecs)
+        if (!silent && lastPrint.peek.total!"msecs" >= printEveryMsecs)
             printProgressLine(LineLocation.middle);
     }
 
@@ -544,13 +544,32 @@ class ProgressMeter
 
 
     ///
-    @property auto ticksPer(string timeUnit)() const nothrow @safe if (isValidTimeUnit!timeUnit)
+    @property auto elapsedSecs() const nothrow @safe
     {
-        return cast(double) numTicks / elapsed!timeUnit;
+        try
+        {
+            return precision.predSwitch!"a <= b"(
+                0, elapsed!"seconds",
+                3, elapsed!"msecs" * 1e-3,
+                6, elapsed!"usecs" * 1e-6,
+                elapsed!"nsecs" * 1e-9,
+            );
+        }
+        catch (Exception)
+        {
+            assert(0);
+        }
     }
 
 
-    /// Returns true when `eta` is defined.
+    ///
+    @property auto ticksPerSec() const nothrow @safe
+    {
+        return cast(double) numTicks / elapsedSecs;
+    }
+
+
+    /// Returns true when `etaSecs` is defined.
     @property auto hasETA() const nothrow @safe
     {
         return totalTicks > 0 && numTicks > 0;
@@ -563,17 +582,17 @@ class ProgressMeter
     /// Compute estimated time of arrival (ETA) with a simple linear model.
     ///
     /// ```d
-    /// const eta = (totalTicks - numTicks)/ticksPer!timeUnit;
+    /// const etaSecs = (totalTicks - numTicks)/ticksPerSec;
     /// ```
     ///
-    /// Returns:  Estimated time of arrival id `hasETA`; otherwise `double.nan`.
-    @property double eta(string timeUnit)() const nothrow @safe if (isValidTimeUnit!timeUnit)
+    /// Returns:  Estimated time of arrival id `hasETA`; otherwise `double.infinity`.
+    @property double etaSecs() const nothrow @safe
     {
-        return hasETA?  (totalTicks - numTicks)/ticksPer!timeUnit : double.nan;
+        return hasETA?  (totalTicks - numTicks)/ticksPerSec : double.infinity;
     }
 
     /// ditto
-    alias estimatedTimeOfArrival = eta;
+    alias estimatedTimeOfArrivalSecs = etaSecs;
 
 
     /// Select unit such that number can be displayed with three leading
@@ -618,7 +637,6 @@ protected:
     {
         enum progressFormat = "\rrecords: %04.*f%c  elapsed: %04.*f sec  rate: %04.*f records/sec";
         enum progressFormatWithTotal = "\rrecords: %04.*f/%04.*f%c (%04.2f%%) eta: %04.*f sec  elapsed: %04.*f sec  rate: %04.*f records/sec";
-        auto elapsedSecs = timer.peek.total!"msecs" * 1e-3;
 
         auto unit = this.unit == Unit.auto_
             ? selectUnitFor(max(numTicks, totalTicks))
@@ -643,11 +661,11 @@ protected:
                 unit.name,
                 (100.0 * numTicks / totalTicks),
                 precision,
-                eta!"seconds",
+                etaSecs,
                 precision,
                 elapsedSecs,
                 precision,
-                cast(double) numTicks / elapsedSecs,
+                ticksPerSec,
             );
 
         final switch (lineLocation)
@@ -665,26 +683,76 @@ protected:
 
     void printJsonProgressLine(LineLocation lineLocation)
     {
-        enum formatPrefix = `{"ticks":%d,"elapsedSecs":%.*f,"ticksPerSec":%.*f`;
+        enum formatPrefix = `{"ticks":%d,"elapsedSecs":%.*f`;
+        enum formatRate = `,"ticksPerSec":%.*f`;
+        enum formatNoRate = `,"ticksPerSec":"inf"`;
         enum formatEta = `,"etaSecs":%.*f`;
         enum formatSuffix = `}`;
 
         if (lineLocation == LineLocation.first)
             return;
 
-        const elapsedSecs = timer.peek.total!"msecs" * 1e-3;
-
         output.writef!formatPrefix(
             numTicks,
             precision,
             elapsedSecs,
-            precision,
-            cast(double) numTicks / elapsedSecs,
         );
+        if (elapsedSecs > 0)
+            output.writef!formatRate(
+                precision,
+                ticksPerSec,
+            );
+        else
+            output.writef!formatNoRate;
 
         if (hasETA)
-            output.writef!formatEta(precision, eta!"seconds");
+            output.writef!formatEta(precision, etaSecs);
 
         output.writefln!formatSuffix;
     }
+}
+
+unittest
+{
+    import std.array;
+    import std.stdio;
+    import vibe.data.json : parseJsonString;
+
+    auto logFile = File.tmpfile();
+    enum totalTicks = 5;
+    auto progress = new ProgressMeter(totalTicks, 0, ProgressMeter.Format.json);
+    progress.precision = 9;
+    progress.output = logFile;
+
+    progress.start();
+    foreach (_; 0 .. totalTicks)
+        progress.tick();
+    progress.stop();
+
+    logFile.rewind();
+    auto statusLines = [
+        parseJsonString(logFile.readln),
+        parseJsonString(logFile.readln),
+        parseJsonString(logFile.readln),
+        parseJsonString(logFile.readln),
+        parseJsonString(logFile.readln),
+        parseJsonString(logFile.readln),
+    ];
+
+    assert(statusLines[0]["ticks"] == 1);
+    assert(statusLines[1]["ticks"] == 2);
+    assert(statusLines[2]["ticks"] == 3);
+    assert(statusLines[3]["ticks"] == 4);
+    assert(statusLines[4]["ticks"] == 5);
+    assert(statusLines[5]["ticks"] == 5);
+
+    assert(statusLines[0]["elapsedSecs"] <= statusLines[1]["elapsedSecs"]);
+    assert(statusLines[1]["elapsedSecs"] <= statusLines[2]["elapsedSecs"]);
+    assert(statusLines[2]["elapsedSecs"] <= statusLines[3]["elapsedSecs"]);
+    assert(statusLines[3]["elapsedSecs"] <= statusLines[4]["elapsedSecs"]);
+    assert(statusLines[4]["elapsedSecs"] <= statusLines[5]["elapsedSecs"]);
+
+    assert(statusLines[0]["etaSecs"] >= statusLines[4]["etaSecs"]);
+    assert(statusLines[5]["etaSecs"] == 0.0);
+    assert(statusLines[5]["ticksPerSec"].get!double > 0.0);
 }
