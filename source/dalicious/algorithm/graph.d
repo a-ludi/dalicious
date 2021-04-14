@@ -8,7 +8,10 @@
 */
 module dalicious.algorithm.graph;
 
+import dalicious.math : NaturalNumberSet;
 import dalicious.container : RingBuffer;
+import std.algorithm;
+import std.functional;
 import std.range;
 import std.traits;
 
@@ -258,3 +261,476 @@ unittest
 
     assert(count == 5);
 }
+
+
+/**
+    Calculate connected components of the graph defined by `hasEdge`.
+
+    Params:
+        hasEdge = Binary predicate taking two nodes of type `size_t` which is
+                  true iff the first node is adjacent to the second node.
+        n =       Number of nodes in the graph. `hasEdge` must be defined for
+                  every pair of integer in `0 .. n`.
+    Returns: Array of components represented as arrays of node indices.
+*/
+size_t[][] connectedComponents(alias hasEdge)(size_t n)
+{
+    alias _hasEdge = binaryFun!hasEdge;
+
+    auto unvisitedNodes = NaturalNumberSet(n, Yes.addAll);
+    auto nodesBuffer = new size_t[n];
+    auto components = appender!(size_t[][]);
+
+    while (!unvisitedNodes.empty)
+    {
+        // discover startNode's component by depth-first search
+        auto component = discoverComponent!_hasEdge(unvisitedNodes);
+        // copy component indices to buffer
+        auto restNodesBuffer = component
+            .elements
+            .copy(nodesBuffer);
+        // append component to result
+        components ~= nodesBuffer[0 .. $ - restNodesBuffer.length];
+        // reduce node buffer
+        nodesBuffer = restNodesBuffer;
+
+    }
+
+    return components.data;
+}
+
+///
+unittest
+{
+    import std.algorithm :
+        equal,
+        min;
+
+    //    _____________
+    //   /             \
+    // (0) --- (1) --- (2)     (3) --- (4)
+    enum n = 5;
+    alias connect = (u, v, x, y) => (u == x && v == y) || (u == y && v == x);
+    alias hasEdge = (u, v) => connect(u, v, 0, 1) ||
+                              connect(u, v, 1, 2) ||
+                              connect(u, v, 2, 0) ||
+                              connect(u, v, 3, 4);
+
+    auto components = connectedComponents!hasEdge(n);
+
+    assert(equal(components, [
+        [0, 1, 2],
+        [3, 4],
+    ]));
+}
+
+///
+unittest
+{
+    import std.algorithm :
+        equal,
+        min;
+
+    //    _____________
+    //   /             \
+    // (0) --- (1) --- (2)     (3) --- (4)
+    //   \_____________________/
+    enum n = 5;
+    alias connect = (u, v, x, y) => (u == x && v == y) || (u == y && v == x);
+    alias hasEdge = (u, v) => connect(u, v, 0, 1) ||
+                              connect(u, v, 1, 2) ||
+                              connect(u, v, 2, 0) ||
+                              connect(u, v, 0, 3) ||
+                              connect(u, v, 3, 4);
+
+    auto components = connectedComponents!hasEdge(n);
+
+    import std.stdio;
+    assert(equal(components, [
+        [0, 1, 2, 3, 4],
+    ]));
+}
+
+
+private NaturalNumberSet discoverComponent(alias hasEdge)(ref NaturalNumberSet nodes)
+{
+    assert(!nodes.empty, "cannot discoverComponent of an empty graph");
+
+    // prepare component
+    auto component = NaturalNumberSet(nodes.maxElement);
+    // select start node
+    auto currentNode = nodes.minElement;
+
+    discoverComponent!hasEdge(nodes, currentNode, component);
+
+    return component;
+}
+
+
+private void discoverComponent(alias hasEdge)(ref NaturalNumberSet nodes, size_t currentNode, ref NaturalNumberSet component)
+{
+    // move currentNode from available nodes to the component
+    component.add(currentNode);
+    nodes.remove(currentNode);
+
+    // try to find successor of current node
+    foreach (nextNode; nodes.elements)
+    {
+        if (hasEdge(currentNode, nextNode))
+        {
+            assert(
+                hasEdge(nextNode, currentNode),
+                "connectedComponents may be called only on an undirected graph",
+            );
+            // found successor -> recurse
+
+            discoverComponent!hasEdge(nodes, nextNode, component);
+        }
+    }
+}
+
+
+///
+struct SingleSourceShortestPathsSolution(weight_t) if (isNumeric!weight_t)
+{
+    static if (isFloatingPoint!weight_t)
+        enum unconnectedWeight = weight_t.infinity;
+    else
+        enum unconnectedWeight = weight_t.max;
+    enum noPredecessor = size_t.max;
+
+    ///
+    size_t startNode;
+
+    ///
+    size_t[] topologicalOrder;
+    private weight_t[] _distance;
+    private size_t[] _predecessor;
+
+
+    ///
+    @property size_t numNodes() const pure nothrow @safe
+    {
+        return topologicalOrder.length;
+    }
+
+
+    private size_t originalNode(size_t u) const pure nothrow @safe
+    {
+        return topologicalOrder[u];
+    }
+
+
+    ///
+    @property const(weight_t)[] distances() const pure nothrow @safe
+    {
+        return _distance[];
+    }
+
+
+    ///
+    @property ref weight_t distance(size_t u) pure nothrow @safe
+    {
+        return _distance[u];
+    }
+
+
+    ///
+    @property weight_t distance(size_t u) const pure nothrow @safe
+    {
+        return _distance[u];
+    }
+
+
+    ///
+    @property bool isConnected(size_t u) const pure nothrow @safe
+    {
+        return distance(u) < unconnectedWeight;
+    }
+
+
+    ///
+    @property ref size_t predecessor(size_t u) pure nothrow @safe
+    {
+        return _predecessor[u];
+    }
+
+
+    ///
+    @property size_t predecessor(size_t u) const pure nothrow @safe
+    {
+        return _predecessor[u];
+    }
+
+
+    ///
+    @property bool hasPredecessor(size_t u) const pure nothrow @safe
+    {
+        return predecessor(u) != noPredecessor;
+    }
+
+
+    ///
+    static struct ReverseShortestPath
+    {
+        private const(SingleSourceShortestPathsSolution!weight_t)* _solution;
+        private size_t _to;
+        private size_t _current;
+
+
+        private this(const(SingleSourceShortestPathsSolution!weight_t)* solution, size_t to)
+        {
+            this._solution = solution;
+            this._to = to;
+            this._current = solution !is null && solution.isConnected(to)
+                ? to
+                : noPredecessor;
+        }
+
+
+        @property const(SingleSourceShortestPathsSolution!weight_t) solution() pure nothrow @safe
+        {
+            return *_solution;
+        }
+
+
+        ///
+        @property size_t from() const pure nothrow @safe
+        {
+            return _solution.startNode;
+        }
+
+
+        ///
+        @property size_t to() const pure nothrow @safe
+        {
+            return _to;
+        }
+
+
+        ///
+        @property bool empty() const pure nothrow @safe
+        {
+            return _current == noPredecessor;
+        }
+
+
+        ///
+        @property size_t front() const pure nothrow @safe
+        {
+            assert(
+                !empty,
+                "Attempting to fetch the front of an empty SingleSourceShortestPathsSolution.ReverseShortestPath",
+            );
+
+            return _current;
+        }
+
+
+        ///
+        void popFront() pure nothrow @safe
+        {
+            assert(!empty, "Attempting to popFront an empty SingleSourceShortestPathsSolution.ReverseShortestPath");
+
+            this._current = _solution !is null
+                ? solution.predecessor(_current)
+                : noPredecessor;
+        }
+    }
+
+
+    /// Traverse shortest path from dest to startNode; empty if `!isConnected(dest)`.
+    ReverseShortestPath reverseShortestPath(size_t dest) const pure nothrow
+    {
+        return ReverseShortestPath(&this, dest);
+    }
+}
+
+
+/**
+    Calculate all shortest paths in DAG starting at `start`. The
+    functions `hasEdge` and `weight` define the graphs structure and
+    weights, respectively. Nodes are represented as `size_t` integers.
+    The graph must be directed and acyclic (DAG).
+
+    Params:
+        hasEdge = Binary predicate taking two nodes of type `size_t` which is
+                  true iff the first node is adjacent to the second node.
+        weight =  Binary function taking two nodes of type `size_t` which
+                  returns the weight of the edge between the first and the
+                  second node. The function may be undefined if `hasEdge`
+                  returns false for the given arguments.
+        n =       Number of nodes in the graph. `hasEdge` must be defined for
+                  every pair of integer in `0 .. n`.
+    Throws: NoDAG if a cycle is detected.
+    Returns: SingleSourceShortestPathsSolution
+*/
+auto dagSingleSourceShortestPaths(alias hasEdge, alias weight)(size_t start, size_t n)
+{
+    import std.experimental.checkedint;
+
+    alias _hasEdge = binaryFun!hasEdge;
+    alias _weight = binaryFun!weight;
+    alias weight_t = typeof(_weight(size_t.init, size_t.init));
+    alias saturated = Checked!(weight_t, Saturate);
+
+    SingleSourceShortestPathsSolution!weight_t result;
+
+    with (result)
+    {
+        // sort topological
+        topologicalOrder = topologicalSort!_hasEdge(n);
+        alias N = (u) => originalNode(u);
+
+        _distance = uninitializedArray!(weight_t[])(n);
+        _distance[] = result.unconnectedWeight;
+        _distance[start] = 0;
+        _predecessor = uninitializedArray!(size_t[])(n);
+        _predecessor[] = size_t.max;
+
+        foreach (u; topologicalOrder.countUntil(start) .. n)
+            foreach (v; u + 1 .. n)
+                if (_hasEdge(N(u), N(v)))
+                {
+                    auto vDistance = saturated(distance(N(v)));
+                    auto uDistance = saturated(distance(N(u))) + saturated(_weight(N(u), N(v)));
+
+                    if (vDistance > uDistance)
+                    {
+                        distance(N(v)) = uDistance.get();
+                        predecessor(N(v)) = N(u);
+                    }
+                }
+    }
+
+    return result;
+}
+
+///
+unittest
+{
+    import std.algorithm : equal;
+
+    //    _____________   _____________
+    //   /             v /             v
+    // (0) --> (1) --> (2)     (3) --> (4)
+    enum n = 5;
+    alias hasEdge = (u, v) => (u + 1 == v && u != 2) ||
+                              (u + 2 == v && u % 2 == 0);
+    alias weight = (u, v) => 1;
+
+    auto shortestPaths = dagSingleSourceShortestPaths!(hasEdge, weight)(0, n);
+
+    assert(equal(shortestPaths.reverseShortestPath(4), [4, 2, 0]));
+    assert(shortestPaths.distance(4) == 2);
+    assert(equal(shortestPaths.reverseShortestPath(2), [2, 0]));
+    assert(shortestPaths.distance(2) == 1);
+    assert(equal(shortestPaths.reverseShortestPath(1), [1, 0]));
+    assert(shortestPaths.distance(1) == 1);
+    assert(equal(shortestPaths.reverseShortestPath(3), size_t[].init));
+    assert(!shortestPaths.isConnected(3));
+}
+
+
+/**
+    Sort nodes of a DAG topologically. The graph structure is defined by
+    `hasEdge` and `n`. Nodes are represented as `size_t` integers. The graph
+    must be directed and acyclic (DAG).
+
+    Params:
+        hasEdge = Binary predicate taking two nodes of type `size_t` which is
+                  true iff the first node is adjacent to the second node.
+        n =       Number of nodes in the graph. `hasEdge` must be defined for
+                  every pair of integer in `0 .. n`.
+    Throws: NoDAG if a cycle is detected.
+    Returns: SingleSourceShortestPathsSolution
+*/
+auto topologicalSort(alias hasEdge)(size_t n)
+{
+    alias _hasEdge = binaryFun!hasEdge;
+
+    // list that will contain the sorted nodes
+    auto sortedNodes = new size_t[n];
+
+    auto sortedNodesHead = sortedNodes[];
+    void enqueueNode(size_t node)
+    {
+        sortedNodesHead[$ - 1] = node;
+        --sortedNodesHead.length;
+    }
+
+    // keep track which nodes have been visited
+    auto unvisitedNodes = NaturalNumberSet(n, Yes.addAll);
+    auto temporaryVisitedNodes = NaturalNumberSet(n);
+
+    void visit(size_t node)
+    {
+        if (node !in unvisitedNodes)
+            // already visited
+            return;
+
+        if (node in temporaryVisitedNodes)
+            // cycle detected
+            throw new NoDAG();
+
+        temporaryVisitedNodes.add(node);
+
+        foreach (nextNode; unvisitedNodes.elements)
+            if (_hasEdge(node, nextNode))
+                visit(nextNode);
+
+        temporaryVisitedNodes.remove(node);
+        unvisitedNodes.remove(node);
+        enqueueNode(node);
+    }
+
+    foreach (node; unvisitedNodes.elements)
+        visit(node);
+
+    return sortedNodes;
+}
+
+///
+unittest
+{
+    import std.algorithm : equal;
+
+    //    _____________   _____________
+    //   /             v /             v
+    // (0) --> (1) --> (2)     (3) --> (4)
+    enum n = 5;
+    alias hasEdge = (u, v) => (u + 1 == v && u != 2) ||
+                              (u + 2 == v && u % 2 == 0);
+
+    auto topologicalOrder = topologicalSort!hasEdge(n);
+
+    assert(equal(topologicalOrder, [3, 0, 1, 2, 4]));
+}
+
+///
+unittest
+{
+    import std.exception : assertThrown;
+
+    //    _____________   _____________
+    //   /             v /             v
+    // (0) --> (1) --> (2)     (3) --> (4)
+    //   ^_____________________________/
+    enum n = 5;
+    alias hasEdge = (u, v) => (u + 1 == v && u != 2) ||
+                              (u + 2 == v && u % 2 == 0) ||
+                              u == 4 && v == 0;
+
+    assertThrown!NoDAG(topologicalSort!hasEdge(n));
+}
+
+
+/// Thrown if a cycle was detected.
+class NoDAG : Exception
+{
+    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    {
+        super("not a DAG: graph has cycles", file, line, next);
+    }
+}
+
