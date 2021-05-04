@@ -536,6 +536,18 @@ struct SingleSourceShortestPathsSolution(weight_t) if (isNumeric!weight_t)
                 ? solution.predecessor(_current)
                 : noPredecessor;
         }
+
+
+        ///
+        @property ReverseShortestPath save() const pure nothrow @safe @nogc
+        {
+            typeof(return) copy;
+            copy._solution = this._solution;
+            copy._to = this._to;
+            copy._current = this._current;
+
+            return copy;
+        }
     }
 
 
