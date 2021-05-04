@@ -10,6 +10,7 @@ module dalicious.string;
 
 import std.algorithm :
     countUntil,
+    equal,
     joiner,
     min,
     map;
@@ -993,4 +994,134 @@ unittest
     static assert(y.toString(0) == "-13");
     static assert(z.toString(1) == "0.9");
     static assert(z.toString(0) == "1");
+}
+
+
+private struct SuffixPrefixMatches(C)
+{
+    C[] stringA;
+    C[] stringB;
+    size_t shift;
+
+
+    this(C[] stringA, C[] stringB)
+    {
+        this.stringA = stringA;
+        this.stringB = stringB;
+        this.shift = stringA.length > stringB.length
+            ? this.shift = stringA.length - stringB.length
+            : 0;
+
+        findNextMatch();
+    }
+
+
+    void popFront()
+    {
+        assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+        ++shift;
+        findNextMatch();
+    }
+
+
+    @property auto front()
+    {
+        assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+        return suffixA;
+    }
+
+
+    @property bool empty() const pure nothrow @safe @nogc
+    {
+        return shift >= stringA.length;
+    }
+
+
+    @property SuffixPrefixMatches!C save() pure nothrow @safe @nogc
+    {
+        return this;
+    }
+
+
+private:
+
+
+    void findNextMatch()
+    {
+        while (shift < stringA.length && suffixA != prefixB)
+            ++shift;
+    }
+
+
+    @property C[] suffixA() pure nothrow @safe @nogc
+    {
+        return stringA[shift .. $];
+    }
+
+
+    @property C[] prefixB() pure nothrow @safe @nogc
+    {
+        return stringB[0 .. stringA.length - shift];
+    }
+}
+
+
+/// Find all suffixes of stringA that are a prefix of stringB. The matches are
+/// computed lazily, decreasing length of the match.
+///
+/// Returns: lazily computed range of all suffixes of stringA that are a
+///          prefix of stringB.
+auto suffixPrefixMatches(C)(C[] stringA, C[] stringB)
+{
+    return SuffixPrefixMatches!C(stringA, stringB);
+}
+
+///
+unittest
+{
+    auto matches = suffixPrefixMatches("abcdef", "cdefghij");
+
+    assert(equal(matches, ["cdef"]));
+}
+
+///
+unittest
+{
+    auto matches = suffixPrefixMatches("abcdefcdef", "cdefcdefghij");
+
+    assert(equal(matches, ["cdefcdef", "cdef"]));
+}
+
+unittest
+{
+    auto matches = suffixPrefixMatches("abcdefcdefc", "cdefcdefcghij");
+
+    assert(equal(matches, ["cdefcdefc", "cdefc", "c"]));
+}
+
+unittest
+{
+    struct ModulusChar
+    {
+        int value;
+        alias value this;
+
+        bool opEquals(const ModulusChar other) const pure nothrow @safe @nogc
+        {
+            return this.value % 10 == other.value % 10;
+        }
+    }
+
+    alias m = ModulusChar;
+    const modulusStringA = [m(1), m(2), m(3), m(1), m(2),  m(3),  m(1),  m(2)];
+    const modulusStringB = [                       m(12), m(13), m(11), m(12)];
+
+    auto matches = suffixPrefixMatches(modulusStringA, modulusStringB);
+
+    assert(equal(matches, [
+        modulusStringA[4 .. $],
+        modulusStringA[7 .. $],
+    ]));
 }
