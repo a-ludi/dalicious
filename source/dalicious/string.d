@@ -997,7 +997,7 @@ unittest
 }
 
 
-private struct SuffixPrefixMatches(C)
+private struct SuffixPrefixMatches(alias pred, C)
 {
     C[] stringA;
     C[] stringB;
@@ -1039,7 +1039,7 @@ private struct SuffixPrefixMatches(C)
     }
 
 
-    @property SuffixPrefixMatches!C save() pure nothrow @safe @nogc
+    @property SuffixPrefixMatches!(pred, C) save() pure nothrow @safe @nogc
     {
         return this;
     }
@@ -1050,7 +1050,7 @@ private:
 
     void findNextMatch()
     {
-        while (shift < stringA.length && suffixA != prefixB)
+        while (shift < stringA.length && !equal!pred(suffixA, prefixB))
             ++shift;
     }
 
@@ -1073,9 +1073,9 @@ private:
 ///
 /// Returns: lazily computed range of all suffixes of stringA that are a
 ///          prefix of stringB.
-auto suffixPrefixMatches(C)(C[] stringA, C[] stringB)
+auto suffixPrefixMatches(alias pred = "a == b", C)(C[] stringA, C[] stringB)
 {
-    return SuffixPrefixMatches!C(stringA, stringB);
+    return SuffixPrefixMatches!(pred, C)(stringA, stringB);
 }
 
 ///
@@ -1119,6 +1119,19 @@ unittest
     const modulusStringB = [                       m(12), m(13), m(11), m(12)];
 
     auto matches = suffixPrefixMatches(modulusStringA, modulusStringB);
+
+    assert(equal(matches, [
+        modulusStringA[4 .. $],
+        modulusStringA[7 .. $],
+    ]));
+}
+
+unittest
+{
+    const modulusStringA = [1, 2, 3, 1, 2,  3,  1,  2];
+    const modulusStringB = [           12, 13, 11, 12];
+
+    auto matches = suffixPrefixMatches!"a % 10 == b % 10"(modulusStringA, modulusStringB);
 
     assert(equal(matches, [
         modulusStringA[4 .. $],
