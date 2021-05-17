@@ -338,3 +338,249 @@ unittest
     assert(buffer.back == 6);
     assert(equal(buffer, [2, 3, 4, 5, 6]));
 }
+
+
+/// An array-based implementation of a ring buffer.
+struct BoundedStack(T, size_t staticBufferSize = size_t.max)
+{
+private:
+
+    static if (staticBufferSize < size_t.max)
+       T[staticBufferSize] _buffer;
+    else
+       T[] _buffer;
+    ptrdiff_t _stackPtr = -1;
+
+public:
+
+    static if (staticBufferSize == size_t.max)
+    {
+        this(size_t bufferSize) pure nothrow @safe
+        {
+            this._buffer = new T[bufferSize];
+        }
+
+
+        this(T[] buffer) pure nothrow @safe
+        {
+            this._buffer = buffer;
+        }
+
+
+        void reserve(size_t capacity) pure nothrow @safe
+        {
+            if (this.capacity < capacity)
+                this._buffer.length = capacity;
+        }
+    }
+
+
+    static if (staticBufferSize < size_t.max)
+        enum bufferSize = _buffer.length;
+    else
+        @property size_t bufferSize() const pure nothrow @safe @nogc
+        {
+            return _buffer.length;
+        }
+
+    alias capacity = bufferSize;
+
+
+    @property BoundedStack!(T, staticBufferSize) save() const pure nothrow @trusted @nogc
+    {
+        return cast(typeof(return)) this;
+    }
+
+
+    @property bool empty() const pure nothrow @safe @nogc
+    {
+        return _stackPtr < 0 || bufferSize == 0;
+    }
+
+
+    @property size_t length() const pure nothrow @safe @nogc
+    {
+        return _stackPtr + 1;
+    }
+
+
+    @property auto ref T front() pure nothrow @safe @nogc
+    {
+        assert(!empty, "Attempting to fetch the front of an empty RingBuffer");
+
+        return _buffer[_stackPtr];
+    }
+
+
+    @property void front(T newFront)
+    {
+        assert(!empty, "Attempting to assign to the front of an empty RingBuffer");
+
+        this.front() = newFront;
+    }
+
+
+    void popFront() pure nothrow @safe @nogc
+    {
+        assert(!empty, "Attempting to popFront an empty RingBuffer");
+
+        --_stackPtr;
+    }
+
+
+    void pushFront(T value) pure nothrow @safe @nogc
+    {
+        assert(capacity > 0, "Attempting to pushFront an zero-sized RingBuffer");
+        assert(length < capacity, "Attempting to pushFront to a full RingBuffer");
+
+        ++_stackPtr;
+        front = value;
+    }
+
+
+    void pushFront(T[] values) pure nothrow @safe @nogc
+    {
+        assert(capacity > 0, "Attempting to pushFront an zero-sized RingBuffer");
+        assert(length + values.length <= capacity, "Attempting to pushFront to a too small RingBuffer");
+
+        _stackPtr += values.length;
+        _buffer[$ - values.length .. $] = values;
+    }
+
+
+    alias put = pushFront;
+}
+
+unittest
+{
+    import std.meta;
+    import std.range.primitives;
+
+    alias Element = int;
+    alias DyanmicRB = RingBuffer!Element;
+    alias StaticRB = RingBuffer!(Element, 10);
+
+    static foreach (alias RB; AliasSeq!(DyanmicRB, StaticRB))
+    {
+        static assert(isInputRange!RB);
+        static assert(isOutputRange!(RB, Element));
+        static assert(isForwardRange!RB);
+        static assert(is(ElementType!RB == Element));
+        static assert(hasAssignableElements!RB);
+        static assert(hasLvalueElements!RB);
+        static assert(hasLength!RB);
+        static assert(!isInfinite!RB);
+    }
+}
+
+///
+unittest
+{
+    import std.algorithm;
+
+    auto stack = BoundedStack!int(5);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack.front == 5);
+    assert(equal(stack, [5, 4, 3, 2, 1]));
+}
+
+/// A custom buffer may be used.
+unittest
+{
+    import std.algorithm;
+
+    auto stack = BoundedStack!int(new int[5]);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack.front == 5);
+    assert(equal(stack, [5, 4, 3, 2, 1]));
+}
+
+/// Ring buffer may have a static size.
+unittest
+{
+    import std.algorithm;
+
+    auto stack = BoundedStack!(int, 5)();
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack.front == 5);
+    assert(equal(stack, [5, 4, 3, 2, 1]));
+}
+
+
+/// Elements can be removed.
+unittest
+{
+    import std.algorithm;
+
+    auto stack = BoundedStack!int(5);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+    stack.popFront();
+    stack.popFront();
+    stack.popFront();
+    stack.popFront();
+
+    assert(stack.front == 1);
+}
+
+/// The stack can be used as an output range.
+unittest
+{
+    import std.algorithm;
+    import std.range;
+
+    auto stack = BoundedStack!int(5);
+
+    iota(5).copy(&stack);
+
+    assert(equal(stack, iota(5).retro));
+}
+
+/// The stack can be resized but that may relocate the underlying buffer.
+unittest
+{
+    import std.algorithm;
+
+    auto stack = BoundedStack!int(5);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack.front == 5);
+    assert(stack.length == stack.capacity);
+
+    stack.reserve(10);
+
+    stack.pushFront(6);
+    stack.pushFront(7);
+    stack.pushFront(8);
+    stack.pushFront(9);
+    stack.pushFront(10);
+
+    assert(stack.front == 10);
+}
