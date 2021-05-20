@@ -386,6 +386,18 @@ public:
     alias capacity = bufferSize;
 
 
+    @property T[] buffer() pure nothrow @safe @nogc
+    {
+        return _buffer[0 .. length];
+    }
+
+
+    T[] opIndex() pure nothrow @safe @nogc
+    {
+        return this.buffer;
+    }
+
+
     @property BoundedStack!(T, staticBufferSize) save() const pure nothrow @trusted @nogc
     {
         return cast(typeof(return)) this;
@@ -428,6 +440,12 @@ public:
     }
 
 
+    void clear() pure nothrow @safe @nogc
+    {
+        _stackPtr = -1;
+    }
+
+
     void pushFront(T value) pure nothrow @safe @nogc
     {
         assert(capacity > 0, "Attempting to pushFront an zero-sized RingBuffer");
@@ -449,6 +467,18 @@ public:
 
 
     alias put = pushFront;
+
+
+    void opOpAssign(string op = "~=")(T value) pure nothrow @safe @nogc
+    {
+        pushFront(value);
+    }
+
+
+    void opOpAssign(string op = "~=")(T[] values) pure nothrow @safe @nogc
+    {
+        pushFront(values);
+    }
 }
 
 unittest
@@ -517,8 +547,8 @@ unittest
     stack.pushFront(1);
     stack.pushFront(2);
     stack.pushFront(3);
-    stack.pushFront(4);
-    stack.pushFront(5);
+    stack ~= 4;
+    stack ~= 5;
 
     assert(stack.front == 5);
     assert(equal(stack, [5, 4, 3, 2, 1]));
@@ -583,4 +613,36 @@ unittest
     stack.pushFront(10);
 
     assert(stack.front == 10);
+}
+
+/// The buffer may be accessed directly
+unittest
+{
+    auto stack = BoundedStack!int(5);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack.buffer == stack[]);
+    assert(stack[] == [1, 2, 3, 4, 5]);
+}
+
+unittest
+{
+    auto stack = BoundedStack!int(5);
+
+    stack.pushFront(1);
+    stack.pushFront(2);
+    stack.pushFront(3);
+    stack.pushFront(4);
+    stack.pushFront(5);
+
+    assert(stack[] == [1, 2, 3, 4, 5]);
+
+    stack.clear();
+
+    assert(stack[] == []);
 }
