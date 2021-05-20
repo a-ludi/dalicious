@@ -145,6 +145,15 @@ unittest
 /**
     Checks if both ranges are permutations of each other.
 
+    pred must be an equivalence relation, e.i. for all inputs:
+
+        // reflexive
+        pred(a, a) == true
+        // symmetric
+        pred(a, b) == pred(b, a)
+        // transitive
+        !(pred(a, b) && pred(b, c)) || pred(a, c)
+
     Params:
         pred = an optional parameter to change how equality is defined
         r1 = A finite input range
