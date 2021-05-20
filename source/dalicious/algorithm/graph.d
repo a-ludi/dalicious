@@ -228,6 +228,38 @@ count_t hopcroftKarp(
     return impl();
 }
 
+/// ditto
+count_t hopcroftKarp(
+    count_t = size_t,
+    nodes_u_it,
+    nodes_v_it,
+    adjacency_t,
+    node_t = ElementType!nodes_u_it,
+)(nodes_u_it U, nodes_v_it V, adjacency_t adjacency, out node_t[node_t] pairU, out node_t[node_t] pairV)
+    if (
+        isForwardRange!nodes_u_it && isForwardRange!nodes_v_it &&
+        is(ElementType!nodes_u_it == ElementType!nodes_v_it) &&
+        isIntegral!(ElementType!nodes_u_it) && isUnsigned!(ElementType!nodes_u_it) &&
+        isRandomAccessRange!adjacency_t && isForwardRange!(ElementType!adjacency_t) &&
+        is(ElementType!(ElementType!adjacency_t) == ElementType!nodes_u_it) &&
+        isIntegral!count_t && isUnsigned!count_t
+    )
+{
+    auto impl = HopcroftKarpImpl!(
+        node_t,
+        nodes_u_it,
+        nodes_v_it,
+        adjacency_t,
+        count_t,
+    )(U, V, adjacency);
+
+    auto count = impl();
+    pairU = impl.Pair_U;
+    pairV = impl.Pair_V;
+
+    return count;
+}
+
 /// Example
 unittest
 {
