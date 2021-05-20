@@ -104,6 +104,63 @@ void enforceNonEmpty(R)(in R region) if (is(R : Region!Args, Args...))
     }
 }
 
+
+/**
+    Create aliases for Region, TaggedInterval and TaggedPoint with given name.
+    This creates three aliases `NameRegion`, `NameInterval` and
+    `NameCoordinate` with `Name` replaced by given regionName. The remaining
+    template arguments are passed to Region except for tagAlias. If omitted it
+    will be derived from regionName by lowering the first character and
+    appending `Id`, e.g. `nameId`.
+*/
+template taggedRegionAliases(string regionName, Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
+{
+    import std.ascii : toLower;
+    import std.array : replace;
+
+    static assert(regionName.length > 0, "empty regionName not allowed");
+    static assert(tagAlias is null || tagAlias.length > 0, "empty tagAlias not allowed");
+
+    static if (tagAlias is null)
+        enum _tagAlias = regionName[0].toLower ~ regionName[1 .. $] ~ "Id";
+    else
+        enum _tagAlias = tagAlias;
+    enum taggedRegionAliases = q{
+        alias $NameRegion = Region!($Number, $Tag, $tagAlias, $emptyTag);
+        alias $NameInterval = $NameRegion.TaggedInterval;
+        alias $NameCoordinate = $NameRegion.TaggedPoint;
+    }
+        .replace("$Name", regionName)
+        .replace("$Number", Number.stringof)
+        .replace("$Tag", Tag.stringof)
+        .replace("$tagAlias", _tagAlias.stringof)
+        .replace("$emptyTag", emptyTag.stringof);
+}
+
+/// Creates three aliases `ReferenceRegion`, `ReferenceInterval` and
+/// `ReferenceCoordinate`. The remaining template arguments are passed to
+/// Region (except for tagAlias, see next example).
+unittest
+{
+    mixin(taggedRegionAliases!("Reference", ulong, uint, "contigId", uint.max));
+
+    static assert(is(ReferenceRegion == Region!(ulong, uint, "contigId", uint.max)));
+    static assert(is(ReferenceInterval == ReferenceRegion.TaggedInterval));
+    static assert(is(ReferenceCoordinate == ReferenceRegion.TaggedPoint));
+    static assert(ReferenceCoordinate().contigId == uint.max);
+}
+
+/// A tag alias is automatically derived from regionName by starting with a
+/// lowercase letter and appending `Id` if omitted.
+unittest
+{
+    mixin(taggedRegionAliases!("Read", ulong, uint));
+
+    static assert(is(ReadRegion == Region!(ulong, uint, "readId")));
+    static assert(is(ReadInterval == ReadRegion.TaggedInterval));
+    static assert(is(ReadCoordinate == ReadRegion.TaggedPoint));
+}
+
 /**
     A Region is a set of tagged intervals where differently tagged intervals are distinct.
 */
