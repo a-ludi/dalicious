@@ -632,6 +632,25 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
         assert(region != regionDup);
     }
 
+    this(const TaggedInterval[] intervals) const pure nothrow @safe @nogc
+    in (areNormalized(intervals))
+    {
+        this._intervals = intervals;
+    }
+
+    ///
+    unittest
+    {
+        alias R = Region!(int, int);
+        alias TI = R.TaggedInterval;
+
+        const intervals = [TI(0, 0, 10), TI(0, 15, 20)];
+        const region = const(R)(intervals);
+
+        assert(region.intervals == [TI(0, 0, 10), TI(0, 15, 20)]);
+    }
+
+
     /// Return a list of the tagged intervals in this region.
     @property const(TaggedInterval)[] intervals() const pure nothrow
     {
@@ -790,6 +809,42 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
         assert(region == normalizedRegion);
     }
 
+
+    /// Returns true if `intervals` are normalized. Normalized intervals
+    /// satisfy these criteria:
+    ///
+    /// 1. All intervals must be non-empty.
+    /// 2. Intervals must be sorted by tag.
+    /// 3. Intervals with the same tag must be sorted by coordinates and
+    ///    must not overlap.
+    static bool areNormalized(const TaggedInterval[] intervals) pure nothrow @safe @nogc
+    {
+        if (intervals.length == 0)
+            return true;
+
+        // all intervals must be non-empty
+        if (intervals[0].empty)
+            return false;
+
+        foreach (i; 0 .. intervals.length - 1)
+        {
+            const intervalA = intervals[i];
+            const intervalB = intervals[i + 1];
+
+            if (
+                // intervals must be non-empty
+                intervalB.empty ||
+                // intervals must be sorted by tag
+                intervalA.tag > intervalB.tag ||
+                // intervals with same tag must be sorted by coordinates and must not overlap
+                (intervalA.tag == intervalB.tag && intervalA.end >= intervalB.begin)
+            )
+                return false;
+        }
+
+        return true;
+    }
+
     /// Computes the union of all tagged intervals.
     Region opBinary(string op)(in Region other) const if (op == "|")
     {
@@ -944,6 +999,32 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
             TI(0, 60, 70),
             TI(0, 80, 90),
             TI(0, 100, 110),
+        ]));
+    }
+
+    unittest
+    {
+        alias R = Region!(int, int);
+        alias TI = R.TaggedInterval;
+
+        assert((R(0, 10, 20) & TI(0, 0, 5)) == R([]));
+        assert((R(0, 10, 20) & TI(0, 5, 15)) == R(0, 10, 15));
+        assert((R(0, 10, 20) & TI(0, 12, 18)) == R(0, 12, 18));
+        assert((R(0, 10, 20) & TI(0, 10, 20)) == R(0, 10, 20));
+        assert((R(0, 10, 20) & TI(0, 15, 25)) == R(0, 15, 20));
+        assert((R(0, 10, 20) & TI(0, 25, 30)) == R([]));
+        assert((R(0, 10, 20) & TI(1, 25, 30)) == R([]));
+        // R1:       [-------)   [-------)   [-------)
+        // TI:             [-------------------)
+        // R1 & R2:        [-)   [-------)   [-)
+        assert((R([
+            TI(0, 0, 30),
+            TI(0, 40, 70),
+            TI(0, 80, 110),
+        ]) & TI(0, 20, 90)) == R([
+            TI(0, 20, 30),
+            TI(0, 40, 70),
+            TI(0, 80, 90),
         ]));
     }
 
