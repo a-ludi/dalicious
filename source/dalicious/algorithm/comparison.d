@@ -32,22 +32,26 @@ import std.range.primitives;
     Order `a` and `b` lexicographically by applying each `fun` to them. For
     unary functions compares `fun(a) < fun(b)`.
 */
-bool orderLexicographically(T, fun...)(T a, T b)
+template orderLexicographically(fun...)
 {
-    static foreach (i, getFieldValue; fun)
+    bool _orderLexicographically(T)(T a, T b)
     {
-        {
+        static foreach (i, getFieldValue; fun)
+        {{
             auto aValue = unaryFun!getFieldValue(a);
             auto bValue = unaryFun!getFieldValue(b);
 
             if (aValue != bValue)
-            {
                 return aValue < bValue;
-            }
-        }
+        }}
+
+        return false;
     }
 
-    return false;
+    static if (is(fun[0]))
+        alias orderLexicographically = _orderLexicographically!(fun[0]);
+    else
+        alias orderLexicographically = _orderLexicographically;
 }
 
 
