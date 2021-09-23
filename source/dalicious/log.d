@@ -688,7 +688,7 @@ protected:
         enum formatPrefix = `{"ticks":%d,"elapsedSecs":%.*f`;
         enum formatRate = `,"ticksPerSec":%.*f`;
         enum formatNoRate = `,"ticksPerSec":"inf"`;
-        enum formatEta = `,"etaSecs":%.*f`;
+        enum formatEta = `,"etaSecs":%.*f,"total":%d`;
         enum formatSuffix = `}`;
 
         if (lineLocation == LineLocation.first)
@@ -708,9 +708,10 @@ protected:
             output.writef!formatNoRate;
 
         if (hasETA)
-            output.writef!formatEta(precision, etaSecs);
+            output.writef!formatEta(precision, etaSecs, totalTicks);
 
         output.writefln!formatSuffix;
+        output.flush();
     }
 }
 
