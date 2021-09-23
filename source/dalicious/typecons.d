@@ -29,16 +29,17 @@ struct BoundedArray(E, size_t maxElements_)
     private size_t _length;
 
 
-    this(E[] values)
+    this(E[] values) @nogc
     {
         this._length = values.length;
         this._elements[0 .. values.length] = values[];
     }
 
-    this(V...)(V values) if (V.length > 0 && V.length <= maxElements && allSatisfy!(isBaseType, V))
+    this(V...)(V values) @nogc if (V.length > 0 && V.length <= maxElements && allSatisfy!(isBaseType, V))
     {
         this._length = V.length;
-        this._elements[0 .. V.length] = [values[0 .. V.length]];
+        static foreach (i; 0 .. V.length)
+            this._elements[i] = values[i];
     }
 
     unittest
