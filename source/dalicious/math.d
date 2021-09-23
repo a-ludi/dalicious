@@ -8,7 +8,8 @@
 */
 module dalicious.math;
 
-import dalicious.algorithm;
+import dalicious.algorithm.comparison;
+import dalicious.algorithm.iteration;
 import std.algorithm;
 import std.algorithm : stdMean = mean;
 import std.array;
@@ -4175,4 +4176,150 @@ unittest
             assert(b == decoded[1]);
             assert(n == n2);
         }
+}
+
+
+/// Saturated arithmetic on integers.
+Int saturated(string op, Int)(Int x, Int y) pure nothrow @safe @nogc
+    if (
+        (is(Int == int) || is(Int == long) || is(Int == uint) || is(Int == ulong)) &&
+        op.length == 1
+    )
+{
+    import core.checkedint;
+    import std.traits : isSigned;
+
+    bool overflow;
+    static if (op == "+")
+    {
+        static if (isSigned!Int)
+        {
+            auto res = adds(x, y, overflow);
+
+            if (overflow)
+            {
+                assert((0 < x) == (0 < y), "expected same sign");
+
+                if (0 < x)
+                    res = Int.max;
+                else
+                    res = Int.min;
+            }
+
+            return res;
+        }
+        else
+        {
+            auto res = addu(x, y, overflow);
+
+            if (overflow)
+                res = Int.max;
+
+            return res;
+        }
+    }
+    else static if (op == "-")
+    {
+        static if (isSigned!Int)
+        {
+            auto res = subs(x, y, overflow);
+
+            if (overflow)
+            {
+                assert((0 < x) != (0 < y), "expected opposite signs");
+
+                if (0 < x)
+                    res = Int.max;
+                else
+                    res = Int.min;
+            }
+
+            return res;
+        }
+        else
+        {
+            auto res = subu(x, y, overflow);
+
+            if (overflow)
+                res = Int.min;
+
+            return res;
+        }
+    }
+    else
+    {
+        static assert(0, "operator not implemented: " ~ op);
+    }
+}
+
+/// Signed integers
+unittest
+{
+    assert(saturated!"+"(int.min, int.min) == int.min);
+    assert(saturated!"+"(int.min, -42) == int.min);
+    assert(saturated!"+"(int.min, +42) == int.min + 42);
+    assert(saturated!"+"(int.min, int.max) == -1);
+    assert(saturated!"+"(-42, int.min) == int.min);
+    assert(saturated!"+"(+42, int.min) == int.min + 42);
+    assert(saturated!"+"(-42, int.max) == int.max - 42);
+    assert(saturated!"+"(+42, int.max) == int.max);
+    assert(saturated!"+"(int.max, int.min) == -1);
+    assert(saturated!"+"(int.max, -42) == int.max - 42);
+    assert(saturated!"+"(int.max, +42) == int.max);
+    assert(saturated!"+"(int.max, int.max) == int.max);
+
+    assert(saturated!"-"(int.min, int.min) == 0);
+    assert(saturated!"-"(int.min, -42) == int.min + 42);
+    assert(saturated!"-"(int.min, +42) == int.min);
+    assert(saturated!"-"(int.min, int.max) == int.min);
+    assert(saturated!"-"(-42, int.min) == -42 - int.min);
+    assert(saturated!"-"(+42, int.min) == int.max);
+    assert(saturated!"-"(-42, int.max) == int.min);
+    assert(saturated!"-"(+42, int.max) == 42 - int.max);
+    assert(saturated!"-"(int.max, int.min) == int.max);
+    assert(saturated!"-"(int.max, -42) == int.max);
+    assert(saturated!"-"(int.max, +42) == int.max - 42);
+    assert(saturated!"-"(int.max, int.max) == 0);
+}
+
+/// Unsigned integers
+unittest
+{
+    assert(saturated!"+"(uint.min, uint.min) == uint.min);
+    assert(saturated!"+"(uint.min, 42u) == uint.min + 42);
+    assert(saturated!"+"(uint.min, uint.max) == uint.max);
+    assert(saturated!"+"(42u, uint.min) == uint.min + 42);
+    assert(saturated!"+"(42u, uint.max) == uint.max);
+    assert(saturated!"+"(uint.max, uint.min) == uint.max);
+    assert(saturated!"+"(uint.max, 42u) == uint.max);
+    assert(saturated!"+"(uint.max, uint.max) == uint.max);
+
+    assert(saturated!"-"(uint.min, uint.min) == 0);
+    assert(saturated!"-"(uint.min, 42u) == uint.min);
+    assert(saturated!"-"(uint.min, uint.max) == uint.min);
+    assert(saturated!"-"(42u, uint.min) == 42u);
+    assert(saturated!"-"(42u, uint.max) == uint.min);
+    assert(saturated!"-"(uint.max, uint.min) == uint.max);
+    assert(saturated!"-"(uint.max, 42u) == uint.max - 42u);
+    assert(saturated!"-"(uint.max, uint.max) == 0);
+}
+
+/// ditto
+Int saturated(string op, Int)(ref Int x, Int y) pure nothrow @safe @nogc
+    if (
+        (is(Int == int) || is(Int == long) || is(Int == uint) || is(Int == ulong)) &&
+        op.length == 2 && op[1] == '='
+    )
+{
+    return x = saturated!(op[0 .. 1])(x, y);
+}
+
+/// Operator assignment is also possible.
+unittest
+{
+    auto a = -42;
+    assert(saturated!"-="(a, int.max) == a && a == int.min);
+
+    auto b = 42u;
+    assert(saturated!"-="(b, uint.max) == b && b == uint.min);
 }
