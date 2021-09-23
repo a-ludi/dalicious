@@ -32,6 +32,30 @@ public:
         {
             this._buffer = new T[bufferSize];
         }
+
+
+        void reserve(size_t num) pure nothrow @safe
+        {
+            if (num <= bufferSize)
+                return;
+
+            if (empty)
+            {
+                _buffer.length = num;
+            }
+            else
+            {
+                auto newBuffer = new T[num];
+
+                size_t i;
+                foreach_reverse (e; this)
+                    newBuffer[i++] = e;
+
+                this._frontPtr = cast(ptrdiff_t) length - 1;
+                this._backPtr = 0;
+                this._buffer = newBuffer;
+            }
+        }
     }
 
 
@@ -61,6 +85,13 @@ public:
     @property size_t length() const pure nothrow @safe @nogc
     {
         return empty ? 0 : _frontPtr - _backPtr + 1;
+    }
+
+
+    void clear() pure nothrow @safe @nogc
+    {
+        this._frontPtr = -1;
+        this._backPtr = 0;
     }
 
 
@@ -147,14 +178,21 @@ public:
 
     private size_t indexOf(ptrdiff_t ptr) const pure nothrow @safe @nogc
     {
-        // make sure the index is positive
-        return cast(size_t) ((ptr % bufferSize) + bufferSize) % bufferSize;
+        assert(0 <= ptr + 2*bufferSize);
+
+        return cast(size_t) ((ptr + 2*bufferSize) % bufferSize);
+    }
+
+
+    private @property bool areNormalizedPtrs() const pure nothrow @safe @nogc
+    {
+        return abs(_frontPtr) <= bufferSize || abs(_backPtr) <= bufferSize;
     }
 
 
     private void normalizePtrs() pure nothrow @safe @nogc
     {
-        if (abs(_frontPtr) <= bufferSize || abs(_backPtr) <= bufferSize)
+        if (areNormalizedPtrs)
             return;
 
         if (empty)
@@ -165,8 +203,16 @@ public:
         else
         {
             assert(_frontPtr >= _backPtr);
-            _frontPtr = indexOf(_frontPtr);
-            _backPtr = indexOf(_backPtr);
+            if (0 <= _backPtr)
+            {
+                _frontPtr = indexOf(_frontPtr);
+                _backPtr = indexOf(_backPtr);
+            }
+            else
+            {
+                _frontPtr = indexOf(_frontPtr + 2*bufferSize);
+                _backPtr = indexOf(_backPtr + 2*bufferSize);
+            }
 
             if (_frontPtr < _backPtr)
                 _frontPtr += bufferSize;
@@ -336,6 +382,61 @@ unittest
 
     assert(buffer.front == 2);
     assert(buffer.back == 6);
+    assert(equal(buffer, [2, 3, 4, 5, 6]));
+}
+
+unittest
+{
+    import std.algorithm;
+
+    auto buffer = RingBuffer!int(5);
+
+    buffer.pushFront(1); // [1]
+    buffer.pushFront(2); // [2, 1]
+    buffer.pushFront(3); // [3, 2, 1]
+    buffer.pushFront(4); // [4, 3, 2, 1]
+    buffer.pushFront(5); // [5, 4, 3, 2, 1]
+
+    assert(buffer.capacity == 5);
+    buffer.reserve(10);
+    assert(equal(buffer, [5, 4, 3, 2, 1]));
+}
+
+unittest
+{
+    import std.algorithm;
+
+    auto buffer = RingBuffer!int(5);
+
+    buffer.pushBack(1); // [1]
+    buffer.pushBack(2); // [1, 2]
+    buffer.pushBack(3); // [1, 2, 3]
+    buffer.pushBack(4); // [1, 2, 3, 4]
+    buffer.pushBack(5); // [1, 2, 3, 4, 5]
+
+    assert(buffer.capacity == 5);
+    assert(equal(buffer, [1, 2, 3, 4, 5]));
+    buffer.reserve(10);
+    assert(equal(buffer, [1, 2, 3, 4, 5]));
+}
+
+/// The size of the underlying array may be increased.
+unittest
+{
+    import std.algorithm;
+
+    auto buffer = RingBuffer!int(5);
+
+    buffer.pushBack(1); // [1]
+    buffer.pushBack(2); // [1, 2]
+    buffer.pushBack(3); // [1, 2, 3]
+    buffer.pushBack(4); // [1, 2, 3, 4]
+    buffer.pushBack(5); // [1, 2, 3, 4, 5]
+    // elements are no longer linear in memory
+    buffer.pushBack(6); // [2, 3, 4, 5, 6]
+
+    assert(buffer.capacity == 5);
+    buffer.reserve(10);
     assert(equal(buffer, [2, 3, 4, 5, 6]));
 }
 
