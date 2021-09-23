@@ -8,6 +8,8 @@
 */
 module dalicious.typecons;
 
+import std.traits;
+
 
 /// A statically allocated array with up to `maxElements` elements.
 struct BoundedArray(E, size_t maxElements_)
@@ -34,6 +36,13 @@ struct BoundedArray(E, size_t maxElements_)
         this._length = values.length;
         this._elements[0 .. values.length] = values[];
     }
+
+    static if (isCopyable!(const(E)))
+        this(const E[] values) const @nogc
+        {
+            this._length = values.length;
+            this._elements[0 .. values.length] = values[];
+        }
 
     this(V...)(V values) @nogc if (V.length > 0 && V.length <= maxElements && allSatisfy!(isBaseType, V))
     {
@@ -160,19 +169,17 @@ struct BoundedArray(E, size_t maxElements_)
 
 
     ///
-    typeof(this) opIndex(size_t[2] bounds) inout @safe
+    typeof(this) opIndex(size_t[2] bounds) @safe
     {
-        import std.traits : Unqual;
-
-        alias UThis = Unqual!(typeof(this));
-        alias UElements = Unqual!(typeof(this._elements[]));
-
-        UThis slice;
-        slice._length = bounds[1] - bounds[0];
-        slice._elements[0 .. slice._length] = cast(UElements) this[][bounds[0] .. bounds[1]];
-
-        return slice;
+        return typeof(return)(this._elements[bounds[0] .. bounds[1]]);
     }
+
+    /// ditto
+    static if (isCopyable!(const(E)))
+        const(typeof(this)) opIndex(size_t[2] bounds) const @safe
+        {
+            return typeof(return)(this._elements[bounds[0] .. bounds[1]]);
+        }
 
     unittest
     {
