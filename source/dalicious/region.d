@@ -888,7 +888,25 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
     /// ditto
     Region opBinary(string op)(in TaggedInterval other) const if (op == "&")
     {
-        return this & Region([other]);
+        if (this.empty || other.empty)
+            return Region();
+
+        auto intersectionIntervals = _intervals
+            .assumeSorted!"a.isStrictlyBefore(b)"
+            .equalRange(other)
+            .release
+            .dup;
+
+        if (intersectionIntervals.length > 0)
+        {
+            intersectionIntervals[0] &= other;
+
+            if (intersectionIntervals.length > 1)
+                intersectionIntervals[$ - 1] &= other;
+        }
+
+        return Region(intersectionIntervals);
+    }
 
     /// ditto
     Region opBinaryRight(string op)(in TaggedInterval other) const if (op == "&")
