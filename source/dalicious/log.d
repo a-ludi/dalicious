@@ -29,7 +29,9 @@ private
 
 static this()
 {
-    setLogFile(stderr);
+    synchronized
+        if (!logFile.isOpen)
+            setLogFile(stderr);
 }
 
 
