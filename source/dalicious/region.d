@@ -802,6 +802,12 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
         return Region(this._intervals.dup ~ [cast(TaggedInterval) other]);
     }
 
+    /// ditto
+    Region opBinaryRight(string op)(in TaggedInterval other) const if (op == "|")
+    {
+        return this & other;
+    }
+
     ///
     unittest
     {
@@ -883,6 +889,11 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
     Region opBinary(string op)(in TaggedInterval other) const if (op == "&")
     {
         return this & Region([other]);
+
+    /// ditto
+    Region opBinaryRight(string op)(in TaggedInterval other) const if (op == "&")
+    {
+        return this & other;
     }
 
     ///
