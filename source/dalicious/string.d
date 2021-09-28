@@ -1009,7 +1009,7 @@ private struct SuffixPrefixMatches(alias pred, C)
         this.stringA = stringA;
         this.stringB = stringB;
         this.shift = stringA.length > stringB.length
-            ? this.shift = stringA.length - stringB.length
+            ? stringA.length - stringB.length
             : 0;
 
         findNextMatch();
