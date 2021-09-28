@@ -4305,7 +4305,7 @@ unittest
 }
 
 /// ditto
-Int saturated(string op, Int)(ref Int x, Int y) pure nothrow @safe @nogc
+ref Int saturated(string op, Int)(return ref Int x, Int y) pure nothrow @safe @nogc
     if (
         (is(Int == int) || is(Int == long) || is(Int == uint) || is(Int == ulong)) &&
         op.length == 2 && op[1] == '='
