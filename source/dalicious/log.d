@@ -678,6 +678,7 @@ protected:
                 break;
             case LineLocation.last:
                 output.writeln();
+                output.flush();
                 break;
         }
     }
