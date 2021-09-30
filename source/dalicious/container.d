@@ -10,6 +10,8 @@ module dalicious.container;
 
 import core.exception;
 import std.math;
+import std.traits;
+import std.typecons;
 
 
 /// An array-based implementation of a ring buffer.
@@ -746,4 +748,457 @@ unittest
     stack.clear();
 
     assert(stack[] == []);
+}
+
+static class StaticLRUCacheMiss : Exception
+{
+    import std.exception : basicExceptionCtors;
+
+    ///
+    mixin basicExceptionCtors;
+}
+
+struct StaticLRUCache(Key, Value, size_t cacheSize)
+{
+    static assert(cacheSize > 0, "zero-sized " ~ typeof(this).stringof ~ " is not allowed");
+
+    private static struct Item
+    {
+        Key key;
+        Value value;
+        Item* next;
+    }
+
+    private Item* queue;
+    private Item[cacheSize] cache;
+    private size_t numCached;
+
+
+    /// Returns true if key is in the cache.
+    bool has(const Key key) const pure nothrow @safe @nogc
+    {
+        return findItem(key) !is null;
+    }
+
+
+    /// Returns the cached value if key is in the cache; throws otherwise.
+    /// This marks the item as recently used.
+    ///
+    /// Throws:  StaticLRUCacheMiss if key is not in the cache.
+    Value get(const Key key) pure @safe
+    {
+        Item* prevItemPtr;
+        auto itemPtr = findItem(key, prevItemPtr);
+
+        if (itemPtr is null)
+            throw new StaticLRUCacheMiss("requested key is not in the cache");
+
+        moveToFront(itemPtr, prevItemPtr);
+
+        return itemPtr.value;
+    }
+
+    /// ditto
+    alias opIndex = get;
+
+
+    /// Returns a pointer to the cached value if key is in the cache; null
+    /// otherwise. The pointer may get invalidated by updating the cache.
+    /// This marks the item as recently used.
+    Value* find(const Key key) pure nothrow @safe @nogc
+    {
+        Item* prevItemPtr;
+        auto itemPtr = findItem(key, prevItemPtr);
+
+        if (itemPtr is null)
+            return null;
+
+        moveToFront(itemPtr, prevItemPtr);
+
+        return &itemPtr.value;
+    }
+
+    /// ditto
+    const(Value)* find(const Key key) const pure nothrow @safe @nogc
+    {
+        auto itemPtr = findItem(key);
+
+        if (itemPtr is null)
+            return null;
+
+        return &itemPtr.value;
+    }
+
+    /// ditto
+    template opBinaryRight(string op)
+    {
+        static if (op == "in")
+            alias opBinaryRight = find;
+    }
+
+
+    /// Cache value at key. Updates the value if key is already in the cache.
+    /// This marks the item as recently used.
+    ref Value set(Key key, Value value) return pure nothrow @safe @nogc
+    {
+        scope assignValue = delegate (ref Value dest) pure nothrow @safe @nogc { dest = value; };
+
+        return set(key, assignValue);
+    }
+
+
+    /// ditto
+    ref Value set(Func)(Key key, scope Func update) return
+    if (is(typeof(update(lvalueOf!Value)) == void))
+    {
+        Item* prevItemPtr;
+        auto itemPtr = findItem(key, prevItemPtr);
+
+        if (itemPtr is null)
+            return insertItem(key, update).value;
+        else
+            return updateItem(itemPtr, update, prevItemPtr).value;
+    }
+
+    /// ditto
+    ref Value opIndexAssign(Value value, Key key) return pure nothrow @safe @nogc
+    {
+        return set(key, value);
+    }
+
+    /// ditto
+    ref Value opIndexAssign(Func)(scope Func update, Key key) return
+    if (is(typeof(update(lvalueOf!Value)) == void))
+    {
+        return set(key, update);
+    }
+
+
+    /// Returns the number of items in the cache.
+    @property size_t length() const pure nothrow @safe @nogc
+    {
+        return numCached;
+    }
+
+
+    /// Iterate over the entries in the cache. This does not count as an
+    /// access.
+    int opApply(scope int delegate(ref inout(Key), ref inout(Value)) yield) inout
+    {
+        int result;
+        inout(Item)* current = queue;
+
+        while (current !is null)
+        {
+            result = yield(current.key, current.value);
+
+            if (result)
+                break;
+
+            current = current.next;
+        }
+
+        return result;
+    }
+
+    /// ditto
+    int opApply(scope int delegate(ref inout(Value)) yield) inout
+    {
+        int result;
+        inout(Item)* current = queue;
+
+        while (current !is null)
+        {
+            result = yield(current.value);
+
+            if (result)
+                break;
+
+            current = current.next;
+        }
+
+        return result;
+    }
+
+
+    ref auto byKeyValue() return pure nothrow @safe @nogc
+    {
+        alias KeyValue = Tuple!(
+            Key, "key",
+            Value, "value",
+        );
+
+        static struct ByKeyValue
+        {
+            Item* current;
+
+            void popFront() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+                current = current.next;
+            }
+
+
+            @property KeyValue front() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+                return KeyValue(current.key, current.value);
+            }
+
+
+            @property bool empty() const pure nothrow @safe
+            {
+                return current is null;
+            }
+        }
+
+        return ByKeyValue(queue);
+    }
+
+
+    ref auto byKey() return pure nothrow @safe @nogc
+    {
+        static struct ByKey
+        {
+            Item* current;
+
+            void popFront() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+                current = current.next;
+            }
+
+
+            @property Key front() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+                return current.key;
+            }
+
+
+            @property bool empty() const pure nothrow @safe
+            {
+                return current is null;
+            }
+        }
+
+        return ByKey(queue);
+    }
+
+
+    ref auto byValue() return pure nothrow @safe @nogc
+    {
+        static struct ByValue
+        {
+            Item* current;
+
+            void popFront() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to popFront an empty " ~ typeof(this).stringof);
+
+                current = current.next;
+            }
+
+
+            @property Value front() pure nothrow @safe
+            {
+                assert(!empty, "Attempting to fetch the front of an empty " ~ typeof(this).stringof);
+
+                return current.value;
+            }
+
+
+            @property bool empty() const pure nothrow @safe
+            {
+                return current is null;
+            }
+        }
+
+        return ByValue(queue);
+    }
+
+
+    // Insert item at the beginning of the queue.
+    private ref Item insertItem(Func)(ref Key key, scope Func update) return
+    if (is(typeof(update(lvalueOf!Value)) == void))
+    {
+        if (numCached < cacheSize)
+        {
+            auto itemPtr = staticNewItem(key);
+            moveToFront(itemPtr);
+            update(itemPtr.value);
+
+            return *itemPtr;
+        }
+        else
+        {
+            Item* secondLRUItem;
+            auto lruItem = findLeastRecentlyUsedItem(secondLRUItem);
+
+            if (lruItem !is null)
+            {
+                lruItem.key = key;
+                update(lruItem.value);
+                moveToFront(lruItem, secondLRUItem);
+
+                return *lruItem;
+            }
+            else
+            {
+                assert(0, "unreachable");
+            }
+        }
+    }
+
+
+    private Item* staticNewItem(ref Key key) pure nothrow @safe @nogc
+    out (item; item !is null)
+    {
+        auto itemPtr = &cache[numCached++];
+
+        *itemPtr = Item(key);
+
+        return itemPtr;
+    }
+
+
+    // Update item and move to the beginning of the queue.
+    private ref Item updateItem(Func)(Item* itemPtr, scope Func update, Item* prevItemPtr) return
+    if (is(typeof(update(lvalueOf!Value)) == void))
+    in (itemPtr !is null)
+    {
+        update(itemPtr.value);
+        moveToFront(itemPtr, prevItemPtr);
+
+        return *itemPtr;
+    }
+
+
+    private void moveToFront(Item* item, Item* prevItem = null) pure nothrow @safe @nogc
+    in (item !is null)
+    {
+        if (prevItem !is null)
+            prevItem.next = item.next;
+
+        item.next = queue;
+        queue = item;
+    }
+
+
+    private Item* findLeastRecentlyUsedItem(out Item* secondLRUItem) pure nothrow @safe @nogc
+    {
+        auto result = findBy!"a.next is null"();
+
+        secondLRUItem = result.prev;
+
+        return result.item;
+    }
+
+
+    private const(Item)* findItem(const ref Key key) const pure nothrow @safe @nogc
+    {
+        return findBy!"a.key == b"(key).item;
+    }
+
+
+    private Item* findItem(const ref Key key, out Item* prevItem) pure nothrow @safe @nogc
+    {
+        auto result = findBy!"a.key == b"(key);
+
+        prevItem = result.prev;
+
+        return result.item;
+    }
+
+
+    private struct FindResult
+    {
+        Item* item;
+        Item* prev;
+    }
+
+
+    private auto findBy(alias pred, Args...)(Args args) inout
+    {
+        import std.functional;
+
+        static if (Args.length == 0)
+            alias _pred = unaryFun!pred;
+        else static if (Args.length == 1)
+            alias _pred = binaryFun!pred;
+        else
+            alias _pred = pred;
+
+        inout(Item)* current = queue;
+        inout(Item)* prev;
+
+        while (current !is null)
+        {
+            if (_pred(current, args))
+                return inout(FindResult)(current, prev);
+
+            prev = current;
+            current = current.next;
+        }
+
+        return inout(FindResult)();
+    }
+}
+
+unittest
+{
+    import std.algorithm.comparison : equal;
+
+    enum cacheSize = 5;
+    StaticLRUCache!(int, string, cacheSize) cache;
+
+    // Fill the cache
+    cache[1] = "Apple";
+    cache[2] = "Banana";
+    cache[3] = "Coconut";
+    assert(cache.length == 3);
+    cache[4] = "Dragonfruit";
+    cache[5] = "Eggplant";
+    // Cache is full; the next insertion drops the least-recently used item
+    // which is (1, "Apple").
+    assert(cache.length == cacheSize);
+    cache[6] = "Asparagus";
+
+    assert(equal(cache.byKeyValue, [
+        tuple(6, "Asparagus"),
+        tuple(5, "Eggplant"),
+        tuple(4, "Dragonfruit"),
+        tuple(3, "Coconut"),
+        tuple(2, "Banana"),
+    ]));
+
+    // Acessing (read or write) an item marks it as recently accessed,
+    // i.e. it is pushed to the front.
+    cache[3] = "Carrot"; // write
+    assert(cache[2] == "Banana"); // read-only
+    assert(4 in cache); // read/write (returns a pointer to the value)
+
+    assert(equal(cache.byKeyValue, [
+        tuple(4, "Dragonfruit"),
+        tuple(2, "Banana"),
+        tuple(3, "Carrot"),
+        tuple(6, "Asparagus"),
+        tuple(5, "Eggplant"),
+    ]));
+
+    // An udpate can be avoided by using `has` or a `const` object.
+    assert(cache.has(6));
+    assert(6 in cast(const) cache);
+
+    assert(equal(cache.byKeyValue, [
+        tuple(4, "Dragonfruit"),
+        tuple(2, "Banana"),
+        tuple(3, "Carrot"),
+        tuple(6, "Asparagus"),
+        tuple(5, "Eggplant"),
+    ]));
 }
