@@ -1091,38 +1091,27 @@ struct StaticLRUCache(Key, Value, size_t cacheSize)
 
     private Item* findLeastRecentlyUsedItem(out Item* secondLRUItem) pure nothrow @safe @nogc
     {
-        auto result = findBy!"a.next is null"();
+        Item* prevItem;
 
-        secondLRUItem = result.prev;
-
-        return result.item;
+        return findBy!"a.next is null"(prevItem);
     }
 
 
     private const(Item)* findItem(const ref Key key) const pure nothrow @safe @nogc
     {
-        return findBy!"a.key == b"(key).item;
+        const(Item)* prevItem;
+
+        return findBy!"a.key == b"(prevItem, key);
     }
 
 
     private Item* findItem(const ref Key key, out Item* prevItem) pure nothrow @safe @nogc
     {
-        auto result = findBy!"a.key == b"(key);
-
-        prevItem = result.prev;
-
-        return result.item;
+        return findBy!"a.key == b"(prevItem, key);
     }
 
 
-    private struct FindResult
-    {
-        Item* item;
-        Item* prev;
-    }
-
-
-    private auto findBy(alias pred, Args...)(Args args) inout
+    private inout(Item)* findBy(alias pred, Args...)(out inout(Item)* prevItem, Args args) inout
     {
         import std.functional;
 
@@ -1134,18 +1123,19 @@ struct StaticLRUCache(Key, Value, size_t cacheSize)
             alias _pred = pred;
 
         inout(Item)* current = queue;
-        inout(Item)* prev;
-
-        while (current !is null)
+        size_t i;
+        while (current !is null && i <= numCached)
         {
             if (_pred(current, args))
-                return inout(FindResult)(current, prev);
+                return current;
 
-            prev = current;
+            prevItem = current;
             current = current.next;
+            ++i;
         }
+        assert(i <= numCached, "loop detected");
 
-        return inout(FindResult)();
+        return null;
     }
 }
 
