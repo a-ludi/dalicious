@@ -32,6 +32,12 @@ TargetRange bufferedIn(SourceRange, TargetRange)(SourceRange source, TargetRange
 {
     import std.algorithm.mutation : copy;
 
+    static if (hasLength!SourceRange)
+        assert(
+            source.length <= target.length,
+            "Cannot copy a source range into a smaller target range.",
+        );
+
     const bufferRest = source.copy(target);
 
     return target[0 .. $ - bufferRest.length];
