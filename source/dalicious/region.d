@@ -568,7 +568,8 @@ struct Region(Number, Tag, string tagAlias = null, Tag emptyTag = Tag.init)
     this(TaggedInterval[] intervals)
     {
         this._intervals = intervals;
-        this.normalize();
+        if (!areNormalized(this._intervals))
+            this.normalize();
     }
 
     ///
